@@ -22,6 +22,15 @@
 
 #include <proton/type_compat.h>
 #include <proton/event.h>
+#include <proton/condition.h>
+
+/* FIXME aconway 2017-03-15: remove if pn_event_conditoin goes to proton */
+#include <proton/transport.h>
+#include <proton/connection.h>
+#include <proton/listener.h>
+#include <proton/disposition.h>
+#include <proton/session.h>
+#include <proton/link.h>
 
 #include <errno.h>
 #include <stdarg.h>
@@ -37,28 +46,49 @@ typedef struct test_t {
 } test_t;
 
 /* Internal, use macros. Print error message and increase the t->errors count.
-   All output from test marcros goes to stdout not stderr, error messages are normal for a test.
+   All output from test marcros goes to stderr so it interleaves with PN_TRACE logs.
 */
+
 static void test_vlogf_(test_t *t, const char *prefix, const char* expr,
                         const char* file, int line, const char *fmt, va_list ap)
 {
-  printf("%s:%d", file, line);
-  if (prefix && *prefix) printf(": %s", prefix);
-  if (expr && *expr) printf(": %s", expr);
+  fprintf(stderr, "%s:%d", file, line);
+  if (prefix && *prefix) fprintf(stderr, ": %s", prefix);
+  if (expr && *expr) fprintf(stderr, ": %s", expr);
   if (fmt && *fmt) {
-    printf(": ");
-    vprintf(fmt, ap);
+    fprintf(stderr, ": ");
+    vfprintf(stderr, fmt, ap);
   }
-  if (t) printf(" [%s]", t->name);
-  printf("\n");
+  if (t) fprintf(stderr, " [%s]", t->name);
+  fprintf(stderr, "\n");
   fflush(stdout);
 }
 
-static void test_errorf_(test_t *t, const char *prefix, const char* expr,
+static void test_errorf_(test_t *t, const char* expr,
                          const char* file, int line, const char *fmt, ...) {
+  ++t->errors;
   va_list ap;
   va_start(ap, fmt);
-  ++t->errors;
+  test_vlogf_(t, "error", expr, file, line, fmt, ap);
+  va_end(ap);
+}
+
+static bool test_check_(test_t *t, bool expr, const char *sexpr,
+                        const char *file, int line, const char* fmt, ...) {
+  if (!expr) {
+    ++t->errors;
+    va_list ap;
+    va_start(ap, fmt);
+    test_vlogf_(t, "error: check failed", sexpr, file, line, fmt, ap);
+    va_end(ap);
+  }
+  return expr;
+}
+
+static void test_logf_(test_t *t, const char *prefix, const char* expr,
+                       const char* file, int line, const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
   test_vlogf_(t, prefix, expr, file, line, fmt, ap);
   va_end(ap);
 }
@@ -86,25 +116,13 @@ static void assert_fail_(const char* expr, const char* file, int line, const cha
   TEST_ASSERTF((expr), "%s", strerror(err))
 
 
-/* Internal, use macros */
-static inline bool test_check_(test_t *t, bool expr, const char *sexpr, const char *file, int line, const char* fmt, ...) {
-  if (!expr) {
-    ++t->errors;
-    va_list ap;
-    va_start(ap, fmt);
-    test_vlogf_(t, "check failed", sexpr, file, line, fmt, ap);
-    va_end(ap);
-  }
-  return expr;
-}
-
 /* Print a message but don't mark the test as having an error */
 #define TEST_LOGF(TEST, ...) \
   test_logf_((TEST), "info", NULL, __FILE__, __LINE__, __VA_ARGS__)
 
 /* Print an error with printf-style message, increment TEST->errors */
 #define TEST_ERRORF(TEST, ...) \
-  test_errorf_((TEST), "error", NULL, __FILE__, __LINE__, __VA_ARGS__)
+  test_errorf_((TEST), NULL, __FILE__, __LINE__, __VA_ARGS__)
 
 /* If EXPR is false, print and record an error for t  */
 #define TEST_CHECKF(TEST, EXPR, ...) \
@@ -120,19 +138,65 @@ static inline bool test_etype_equal_(test_t *t, int want, int got, const char *f
                      pn_event_type_name((pn_event_type_t)got));
 }
 
+#define TEST_CHECK_COND(T, WANT, COND) do {                             \
+    pn_condition_t *cond = (COND);                                      \
+    if (TEST_CHECKF((T), pn_condition_is_set(cond), "expecting error")) { \
+      const char* description = pn_condition_get_description(cond);     \
+      if (!strstr(description, (WANT))) {                               \
+        TEST_ERRORF((T), "expected '%s' in '%s'", (WANT), description); \
+      }                                                                 \
+    }                                                                   \
+  } while(0)
+
+#define TEST_CHECK_NO_COND(T, COND) do {                                \
+    pn_condition_t *cond = (COND);                                      \
+    if (cond && pn_condition_is_set(cond)) {                            \
+      TEST_ERRORF((T), "unexpected condition: %s", pn_condition_get_description(cond)); \
+    }                                                                   \
+  } while(0)
+
 #define TEST_ETYPE_EQUAL(TEST, WANT, GOT) \
   test_etype_equal_((TEST), (WANT), (GOT), __FILE__, __LINE__)
+
+/* FIXME aconway 2017-03-15: add to proton core? */
+#define PN_EVENT_COND(T) if (pn_event_##T(e)) return pn_##T##_condition(pn_event_##T(e))
+static inline pn_condition_t *pn_event_condition(pn_event_t *e) {
+  PN_EVENT_COND(connection);
+  PN_EVENT_COND(listener);
+  PN_EVENT_COND(link);
+  PN_EVENT_COND(session);
+  PN_EVENT_COND(transport);
+  return NULL;
+}
+
+static inline pn_event_t *test_event_type_(test_t *t, pn_event_type_t want, pn_event_t *got, const char *file, int line) {
+  test_check_(t, want == pn_event_type(got), NULL, file, line, "want %s got %s",
+              pn_event_type_name(want),
+              pn_event_type_name(pn_event_type(got)));
+  if (want != pn_event_type(got)) {
+    pn_condition_t *cond = pn_event_condition(got);
+    if (cond && pn_condition_is_set(cond)) {
+      test_errorf_(t, NULL, file, line, "condition: %s:%s",
+                   pn_condition_get_name(cond), pn_condition_get_description(cond));
+    }
+    return NULL;
+  }
+  return got;
+}
+
+#define TEST_EVENT_TYPE(TEST, WANT, GOT) \
+  test_event_type_((TEST), (WANT), (GOT), __FILE__, __LINE__)
 
 /* T is name of a test_t variable, EXPR is the test expression (which should update T)
    FAILED is incremented if the test has errors
 */
 #define RUN_TEST(FAILED, T, EXPR) do {                          \
-    printf("TEST: %s\n", #EXPR);                                \
+    fprintf(stderr, "TEST: %s\n", #EXPR);                                \
     fflush(stdout);                                             \
     test_t T = { #EXPR, 0 };                                    \
     (EXPR);                                                     \
     if (T.errors) {                                             \
-      printf("FAIL: %s (%d errors)\n", #EXPR, T.errors);        \
+      fprintf(stderr, "FAIL: %s (%d errors)\n", #EXPR, T.errors);        \
       ++(FAILED);                                               \
     }                                                           \
   } while(0)
@@ -207,13 +271,19 @@ typedef struct test_port_t {
   char host_port[256];          /* host:port string */
 } test_port_t;
 
+/* Modifies tp->host_port to use host, returns the new tp->host_port */
+static const char *test_port_use_host(test_port_t *tp, const char *host) {
+  snprintf(tp->host_port, sizeof(tp->host_port), "%s:%d", host, tp->port);
+  return tp->host_port;
+}
+
 /* Create a test_port_t  */
 static inline test_port_t test_port(const char* host) {
   test_port_t tp = {0};
   tp.sock = sock_bind0();
   tp.port = sock_port(tp.sock);
   snprintf(tp.str, sizeof(tp.str), "%d", tp.port);
-  snprintf(tp.host_port, sizeof(tp.host_port), "%s:%d", host, tp.port);
+  test_port_use_host(&tp, host);
   return tp;
 }
 
