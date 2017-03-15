@@ -158,17 +158,6 @@ static inline bool test_etype_equal_(test_t *t, int want, int got, const char *f
 #define TEST_ETYPE_EQUAL(TEST, WANT, GOT) \
   test_etype_equal_((TEST), (WANT), (GOT), __FILE__, __LINE__)
 
-/* FIXME aconway 2017-03-15: add to proton core? */
-#define PN_EVENT_COND(T) if (pn_event_##T(e)) return pn_##T##_condition(pn_event_##T(e))
-static inline pn_condition_t *pn_event_condition(pn_event_t *e) {
-  PN_EVENT_COND(connection);
-  PN_EVENT_COND(listener);
-  PN_EVENT_COND(link);
-  PN_EVENT_COND(session);
-  PN_EVENT_COND(transport);
-  return NULL;
-}
-
 static inline pn_event_t *test_event_type_(test_t *t, pn_event_type_t want, pn_event_t *got, const char *file, int line) {
   test_check_(t, want == pn_event_type(got), NULL, file, line, "want %s got %s",
               pn_event_type_name(want),
