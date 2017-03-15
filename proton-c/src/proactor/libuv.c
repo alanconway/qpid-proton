@@ -322,6 +322,10 @@ static void leader_count(pn_proactor_t *p, int change) {
 }
 
 static void pconnection_free(pconnection_t *pc) {
+  // Clear context value attached to pn_connection_t as it can outlast the
+  // pconnection_t
+  pn_record_t *r = pn_connection_attachments(pc->driver.connection);
+  pn_record_set(r, PN_PROACTOR, 0);
   pn_connection_driver_destroy(&pc->driver);
   free(pc);
 }

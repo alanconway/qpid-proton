@@ -24,14 +24,6 @@
 #include <proton/event.h>
 #include <proton/condition.h>
 
-/* FIXME aconway 2017-03-15: remove if pn_event_conditoin goes to proton */
-#include <proton/transport.h>
-#include <proton/connection.h>
-#include <proton/listener.h>
-#include <proton/disposition.h>
-#include <proton/session.h>
-#include <proton/link.h>
-
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
