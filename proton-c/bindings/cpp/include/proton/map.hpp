@@ -84,11 +84,11 @@ class PN_CPP_CLASS_EXTERN map {
 
     /// Copy from a proton::value.
     /// @throw proton::conversion_error if x does not contain a compatible map.
-    void value(const value& x);
+    PN_CPP_EXTERN void value(const value& x);
     /// Access as a proton::value
-    proton::value& value();
+    PN_CPP_EXTERN proton::value& value();
     /// Access as a proton::value
-    const proton::value& value() const;
+    PN_CPP_EXTERN const proton::value& value() const;
 
     /// Get the map entry for key k, return T() if no such entry
     PN_CPP_EXTERN T get(const K& k) const;
