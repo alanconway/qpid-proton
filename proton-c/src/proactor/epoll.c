@@ -19,9 +19,9 @@
  *
  */
 
-/* Enable POSIX features for pthread.h */
-#ifndef _DEFAULT_SOURCE
-#define _DEFAULT_SOURCE
+/* Enable POSIX features beyond c99 for modern pthread and standard strerror_r() */
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
 #endif
 /* Avoid GNU extensions, in particular the incompatible alternative strerror_r() */
 #undef _GNU_SOURCE
@@ -1997,6 +1997,14 @@ const pn_netaddr_t *pn_netaddr_remote(pn_transport_t *t) {
   pconnection_t *pc = get_pconnection(pn_transport_connection(t));
   return pc ? &pc->remote : NULL;
 }
+
+#ifndef NI_MAXHOST
+# define NI_MAXHOST 1025
+#endif
+
+#ifndef NI_MAXSERV
+# define NI_MAXSERV 32
+#endif
 
 int pn_netaddr_str(const pn_netaddr_t* na, char *buf, size_t len) {
   char host[NI_MAXHOST];
