@@ -1251,7 +1251,7 @@ void pn_proactor_listen(pn_proactor_t *p, pn_listener_t *l, const char *addr, in
     }
     assert(len > 0);            /* guaranteed by getaddrinfo */
     l->psockets = (psocket_t*)calloc(len, sizeof(psocket_t));
-    assert(l->psockets);      /* FIXME aconway 2017-05-05: memory safety */
+    assert(l->psockets);      /* TODO aconway 2017-05-05: memory safety */
     l->psockets_size = 0;
     /* Find working listen addresses */
     for (struct addrinfo *ai = addrinfo; ai; ai = ai->ai_next) {
