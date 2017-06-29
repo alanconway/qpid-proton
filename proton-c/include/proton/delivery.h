@@ -166,6 +166,9 @@ PN_EXTERN bool pn_delivery_settled(pn_delivery_t *delivery);
 /**
  * Get the amount of pending message data for a delivery.
  *
+ * For a sender, this is data from pn_link_send() that is still buffered in memory.
+ * For a receiver, this is data available for pn_link_recv().
+ *
  * @param[in] delivery a delivery object
  * @return the amount of pending message data in bytes
  */
