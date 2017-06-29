@@ -79,7 +79,6 @@ static void queue_init(queue_t *q, const char* name, queue_t *next) {
 
 static void queue_destroy(queue_t *q) {
   pthread_mutex_destroy(&q->lock);
-  free(q->name);
   for (size_t i = 0; i < q->messages.len; ++i)
     free(q->messages.data[i].start);
   VEC_FINAL(q->messages);
