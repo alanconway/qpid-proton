@@ -33,7 +33,7 @@ else(WIN32)
   set(test_path "${CMAKE_CURRENT_BINARY_DIR}:$ENV{PATH}")
 endif(WIN32)
 
-foreach(name broker send receive direct)
+foreach(name broker send receive direct streamer)
   add_executable(proactor-${name} ${name}.c)
   target_link_libraries(proactor-${name} ${Proton_Proactor_LIBRARIES} ${Proton_Core_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT})
   set_target_properties(proactor-${name} PROPERTIES OUTPUT_NAME ${name})
