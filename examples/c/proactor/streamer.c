@@ -67,12 +67,10 @@ typedef struct address_t {
 } address_t;
 
 static void address_init(address_t *a, const char* name, address_t *next) {
+  memset(a, 0, sizeof(*a));
   pthread_mutex_init(&a->lock, NULL);
   strncpy(a->name, name, sizeof(a->name));
   a->sender = a->receiver = NULL;
-  a->started = false;
-  a->end_of_message = false;
-  a->size = 0;
   a->next = next;
 }
 
@@ -238,7 +236,6 @@ static void address_send(address_t *a) {
   }
   /* Check if the message is complete */
   if (a->end_of_message && a->size == 0) {
-    pn_link_advance(a->sender);
     pn_delivery_settle(d);
     a->end_of_message = false;
     wake = true;
