@@ -1,5 +1,5 @@
-#ifndef PROTON_FWD_HPP
-#define PROTON_FWD_HPP
+#ifndef PROTON_RETURNED_HPP
+#define PROTON_RETURNED_HPP
 
 /*
  *
@@ -22,48 +22,34 @@
  *
  */
 
+#include "./internal/object.hpp"
+
+/// @file
+/// Return type for container functions
+
 namespace proton {
 
-class annotation_key;
-class connection;
-class connection_options;
-class container;
-class delivery;
-class duration;
-class error_condition;
-class event;
-class message;
-class message_id;
-class messaging_handler;
-class listen_handler;
-class listener;
-class receiver;
-class receiver_iterator;
-class receiver_options;
-class reconnect_timer;
-class sasl;
-class sender;
-class sender_iterator;
-class sender_options;
-class session;
-class session_options;
-class source_options;
-class ssl;
-class target_options;
-class tracker;
-class transport;
-class url;
-class void_function0;
-class work;
-class work_queue;
-
-namespace io {
-
-class connection_driver;
-
+namespace internal {
+template <class T> class factory;
 }
 
-template <class T> class returned;
-}
+/// Return type for container functions
+///
+/// @note *thread-unsafe*: a returned value can be converted to a regular value
+/// in a single threaded application, it *must* be ignored in a multi-threaded
+/// application.
+template <class T>
+class returned
+{
+  public:
+    operator T() const;
 
-#endif // PROTON_FWD_HPP
+  private:
+    typename T::pn_type* ptr_;
+    returned(const T&);
+    returned& operator=(const returned&);
+    template <class U> friend class internal::factory;
+};
+} // proton
+
+#endif  /*!PROTON_RETURNED_HPP*/

@@ -23,8 +23,9 @@
  */
 
 #include "./fwd.hpp"
-#include "./thread_safe.hpp"
+#include "./returned.hpp"
 #include "./types_fwd.hpp"
+#include "./returned.hpp"
 
 #include "./internal/config.hpp"
 #include "./internal/export.hpp"
@@ -76,6 +77,10 @@ class PN_CPP_CLASS_EXTERN container {
     /// The handler in the composed options is used to call
     /// proton::messaging_handler::on_connection_open() when the remote peer's
     /// open response is received.
+    ///
+    /// @return A returned<connection>
+    /// @copydetails returned
+    ///
     PN_CPP_EXTERN returned<connection> connect(const std::string& url, const connection_options &);
 
     /// Connect to `url` and send an open request to the remote peer.
