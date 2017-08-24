@@ -25,7 +25,6 @@
 #include "./fwd.hpp"
 #include "./returned.hpp"
 #include "./types_fwd.hpp"
-#include "./returned.hpp"
 
 #include "./internal/config.hpp"
 #include "./internal/export.hpp"
@@ -80,10 +79,11 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// @return A returned<connection>
     /// @copydetails returned
-    ///
     PN_CPP_EXTERN returned<connection> connect(const std::string& url, const connection_options &);
 
     /// Connect to `url` and send an open request to the remote peer.
+    /// @return A returned<connection>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<connection> connect(const std::string& url);
 
     /// Start listening on url.
@@ -140,12 +140,16 @@ class PN_CPP_CLASS_EXTERN container {
     PN_CPP_EXTERN void stop();
 
     /// Open a connection and sender for `url`.
+    /// @return A returned<sender>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<sender> open_sender(const std::string &url);
 
     /// Open a connection and sender for `url`.
     ///
     /// Supplied sender options will override the container's
     /// template options.
+    /// @return A returned<sender>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<sender> open_sender(const std::string &url,
                                          const proton::sender_options &o);
 
@@ -153,6 +157,8 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// Supplied connection options will override the
     /// container's template options.
+    /// @return A returned<sender>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<sender> open_sender(const std::string &url,
                                          const connection_options &c);
 
@@ -160,11 +166,17 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// Supplied sender or connection options will override the
     /// container's template options.
+    ///
+    /// @return A returned<sender>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<sender> open_sender(const std::string &url,
                                          const proton::sender_options &o,
                                          const connection_options &c);
 
     /// Open a connection and receiver for `url`.
+    ///
+    /// @return A returned<receiver>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<receiver> open_receiver(const std::string&url);
 
 
@@ -172,6 +184,9 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// Supplied receiver options will override the container's
     /// template options.
+    ///
+    /// @return A returned<receiver>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<receiver> open_receiver(const std::string&url,
                                              const proton::receiver_options &o);
 
@@ -179,6 +194,9 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// Supplied receiver or connection options will override the
     /// container's template options.
+    ///
+    /// @return A returned<receiver>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<receiver> open_receiver(const std::string&url,
                                              const connection_options &c);
 
@@ -186,6 +204,9 @@ class PN_CPP_CLASS_EXTERN container {
     ///
     /// Supplied receiver or connection options will override the
     /// container's template options.
+    ///
+    /// @return A returned<receiver>
+    /// @copydetails returned
     PN_CPP_EXTERN returned<receiver> open_receiver(const std::string&url,
                                              const proton::receiver_options &o,
                                              const connection_options &c);

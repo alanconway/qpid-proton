@@ -23,6 +23,9 @@
  */
 
 #include "./internal/object.hpp"
+#include "./connection.hpp"
+#include "./receiver.hpp"
+#include "./sender.hpp"
 
 /// @file
 /// Return type for container functions
@@ -35,9 +38,12 @@ template <class T> class factory;
 
 /// Return type for container functions
 ///
-/// @note *thread-unsafe*: a returned value can be converted to a regular value
-/// in a single threaded application, it *must* be ignored in a multi-threaded
-/// application.
+/// @note returned value is *thread-unsafe*.
+/// A single-threaded application can assign the returned<T> value to a plain T.
+/// A multi-threaded application *must* ignore the returned value, as it may already
+/// be invalid by the time the function returns. Multi-threaded applications
+/// can access the value in @ref messaging_handler functions.
+///
 template <class T>
 class returned
 {
@@ -50,6 +56,7 @@ class returned
     returned& operator=(const returned&);
     template <class U> friend class internal::factory;
 };
+
 } // proton
 
 #endif  /*!PROTON_RETURNED_HPP*/

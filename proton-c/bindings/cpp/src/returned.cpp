@@ -34,13 +34,8 @@ template <class T> returned<T>::operator T() const {
 
 // Explicit instantiations for allowed types
 
-template returned<connection>::returned(const connection&);
-template returned<connection>::operator connection() const;
-
-template returned<sender>::returned(const sender&);
-template returned<sender>::operator sender() const;
-
-template returned<receiver>::returned(const receiver&);
-template returned<receiver>::operator receiver() const;
+template class PN_CPP_CLASS_EXTERN returned<connection>;
+template class PN_CPP_CLASS_EXTERN returned<sender>;
+template class PN_CPP_CLASS_EXTERN returned<receiver>;
 
 }
