@@ -22,7 +22,7 @@
 import unittest
 import os, sys, socket, time, re, inspect
 from proctest import *
-from  random import randrange
+from random import randrange
 from subprocess import Popen, PIPE, STDOUT, call
 from copy import copy
 import platform
@@ -87,7 +87,6 @@ class BrokerTestCase(ProcTestCase):
     ExampleTest that starts a broker in setUpClass and kills it in tearDownClass.
     Subclasses must set `broker_exe` class variable with the name of the broker executable.
     """
-
     @classmethod
     def setUpClass(cls):
         cls.broker = None       # In case Proc throws, create the attribute.
@@ -147,7 +146,8 @@ class ContainerExampleTest(BrokerTestCase):
     def test_simple_send_direct_recv(self):
         with TestPort() as tp:
             addr = "%s/examples" % tp.addr
-            recv = self.proc(["direct_recv", "-a", addr], "listening")
+            recv = self.proc(["direct_recv", "-a", addr])
+            recv.wait_re("listening")
             self.assertMultiLineEqual("all messages confirmed\n",
                              self.proc(["simple_send", "-a", addr]).wait_exit())
             self.assertMultiLineEqual(recv_expect("direct_recv", addr), recv.wait_exit())
@@ -155,7 +155,8 @@ class ContainerExampleTest(BrokerTestCase):
     def test_simple_recv_direct_send(self):
         with TestPort() as tp:
             addr = "%s/examples" % tp.addr
-            send = self.proc(["direct_send", "-a", addr], "listening")
+            send = self.proc(["direct_send", "-a", addr])
+            send.wait_re("listening")
             self.assertMultiLineEqual(recv_expect("simple_recv", addr),
                              self.proc(["simple_recv", "-a", addr]).wait_exit())
             self.assertMultiLineEqual(
@@ -163,14 +164,16 @@ class ContainerExampleTest(BrokerTestCase):
                 send.wait_exit())
 
     def test_request_response(self):
-        server = self.proc(["server", "-a", self.addr], "connected")
+        server = self.proc(["server", "-a", self.addr])
+        server.wait_re("connected")
         self.assertMultiLineEqual(CLIENT_EXPECT,
                          self.proc(["client", "-a", self.addr]).wait_exit())
 
     def test_request_response_direct(self):
         with TestPort() as tp:
             addr = "%s/examples" % tp.addr
-            server = self.proc(["server_direct", "-a", addr], "listening")
+            server = self.proc(["server_direct", "-a", addr])
+            server.wait_re("listening")
             self.assertMultiLineEqual(CLIENT_EXPECT,
                              self.proc(["client", "-a", addr]).wait_exit())
 
@@ -236,20 +239,26 @@ expected conversion_error: "unexpected type, want: uint got: string"
 """
         self.assertMultiLineEqual(expect, self.proc(["message_properties"]).wait_exit())
 
+    def test_multithreaded_client(self):
+        got = self.proc(["multithreaded_client", self.addr, "examples", "10"], helgrind=True).wait_exit()
+        self.maxDiff = None
+        self.assertRegexpMatches(got, "10 messages sent and received");
 
+    def test_multithreaded_client_flow_control(self):
+        got = self.proc(["multithreaded_client_flow_control", self.addr, "examples", "10", "2"], helgrind=True).wait_exit()
+        self.maxDiff = None
+        self.assertRegexpMatches(got, "20 messages sent and received");
 
 class ContainerExampleSSLTest(BrokerTestCase):
     """Run the SSL container examples, verify they behave as expected."""
 
     broker_exe = "broker"
+    valgrind = False            # Disable for all tests, including inherited
 
     def setUp(self):
         super(ContainerExampleSSLTest, self).setUp()
-        self.vg_args = Proc.vg_args
-        Proc.vg_args = []       # Disable
 
     def tearDown(self):
-        Proc.vg_args = self.vg_args
         super(ContainerExampleSSLTest, self).tearDown()
 
     def ssl_certs_dir(self):
@@ -262,7 +271,7 @@ class ContainerExampleSSLTest(BrokerTestCase):
         with TestPort() as tp:
             addr = "amqps://%s/examples" % tp.addr
             # Disable valgrind when using OpenSSL
-            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir()], skip_valgrind=True).wait_exit()
+            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir()]).wait_exit()
             expect = "Outgoing client connection connected via SSL.  Server certificate identity CN=test_server\nHello World!"
             expect_found = (out.find(expect) >= 0)
             self.assertEqual(expect_found, True)
@@ -272,7 +281,7 @@ class ContainerExampleSSLTest(BrokerTestCase):
         with TestPort() as tp:
             addr = "amqps://%s/examples" % tp.addr
             # Disable valgrind when using OpenSSL
-            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir(), "-v", "noname"], skip_valgrind=True).wait_exit()
+            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir(), "-v", "noname"], valgrind=False).wait_exit()
             expect = "Outgoing client connection connected via SSL.  Server certificate identity CN=test_server\nHello World!"
             expect_found = (out.find(expect) >= 0)
             self.assertEqual(expect_found, True)
@@ -282,7 +291,7 @@ class ContainerExampleSSLTest(BrokerTestCase):
         with TestPort() as tp:
             addr = "amqps://%s/examples" % tp.addr
             # Disable valgrind when using OpenSSL
-            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir(), "-v", "fail"], skip_valgrind=True).wait_exit()
+            out = self.proc(["ssl", "-a", addr, "-c", self.ssl_certs_dir(), "-v", "fail"]).wait_exit()
             expect = "Expected failure of connection with wrong peer name"
             expect_found = (out.find(expect) >= 0)
             self.assertEqual(expect_found, True)
@@ -296,7 +305,7 @@ Hello World!
         with TestPort() as tp:
             addr = "amqps://%s/examples" % tp.addr
             # Disable valgrind when using OpenSSL
-            out = self.proc(["ssl_client_cert", addr, self.ssl_certs_dir()], skip_valgrind=True).wait_exit()
+            out = self.proc(["ssl_client_cert", addr, self.ssl_certs_dir()]).wait_exit()
             expect_found = (out.find(expect) >= 0)
             self.assertEqual(expect_found, True)
 
