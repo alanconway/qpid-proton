@@ -85,9 +85,9 @@ template <class T> pn_ptr<T> take_ownership(T* p) { return pn_ptr<T>::take_owner
 /// Base class for proton object types.
 template <class T> class object : private comparable<object<T> > {
   public:
-    bool operator!() const { return !object_; }
+    bool operator!() const { return !object_.get(); }
 #if PN_CPP_HAS_EXPLICIT_CONVERSIONS
-    explicit operator bool() const { return object_; }
+    explicit operator bool() const { return object_.get(); }
 #endif
 
   protected:

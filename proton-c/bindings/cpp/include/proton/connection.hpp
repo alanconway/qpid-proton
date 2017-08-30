@@ -140,6 +140,23 @@ PN_CPP_CLASS_EXTERN connection : public internal::object<pn_connection_t>, publi
     /// @see @ref connection_options::idle_timeout
     PN_CPP_EXTERN uint32_t idle_timeout() const;
 
+    /// **Experimental** - trigger thread-safe call to messaging_handler::on_wake()
+    ///
+    /// messaging_handler::on_wake() will be called on the handler as soon as
+    /// possible after the call to wake(), possibly in a different thread.
+    ///
+    /// @note
+    /// * Thread safe: this is the *only* @ref connection function that can be
+    ///   called from outside the handler thread.
+    /// * Multiple calls to wake() may be coalesced into a single call to
+    ///   messaging_handler::on_wake() that occurs after all of them.
+    /// * Spurious messaging_handler::on_wake() calls can occur even if the application
+    ///   does not call wake()
+    ///
+    /// @see work_queue provides an easier way execute code safely in the
+    /// handler thread.
+    PN_CPP_EXTERN void wake() const;
+
     /// @cond INTERNAL
   friend class internal::factory<connection>;
   friend class container;

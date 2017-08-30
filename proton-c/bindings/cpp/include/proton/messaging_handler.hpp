@@ -146,10 +146,25 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     /// **Experimental** - The receiving peer has requested a drain of
     /// remaining credit.
     PN_CPP_EXTERN virtual void on_sender_drain_start(sender &s);
-    
+
     /// **Experimental** - The credit outstanding at the time of the
     /// call to receiver::drain has been consumed or returned.
     PN_CPP_EXTERN virtual void on_receiver_drain_finish(receiver &r);
+
+    /// **Experimental** - an event that can be triggered from another thread.
+    ///
+    /// on_wake() can be triggered by another thread calling connection::wake()
+    ///
+    /// The on_wake() event carries no information about why it was called.  The
+    /// messaging_handler must have shared, thread-safe members that are set in
+    /// the other and examined in on_wake() to decide if/how to handle it.
+    ///
+    /// @note spurious calls to on_wake() can occur without any application
+    /// call to connection::wake()
+    ///
+    /// @see work_queue provides an easier way execute code safely in the
+    /// handler thread.
+    PN_CPP_EXTERN virtual void on_wake(connection&);
 
     /// Fallback error handling.
     PN_CPP_EXTERN virtual void on_error(const error_condition &c);
