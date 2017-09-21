@@ -53,7 +53,8 @@ typedef struct pn_error_t pn_error_t;
 #define PN_TIMEOUT (-7)        /**< Timeout */
 #define PN_INTR (-8)           /**< Interrupt */
 #define PN_INPROGRESS (-9)     /**< In-progress */
-#define PN_OUT_OF_MEMORY (-10) /**< Out-of-momory error */
+#define PN_OUT_OF_MEMORY (-10) /**< Out-of-memory error */
+#define PN_ABORTED (-11)       /**< Delivery aborted error */
 
 /**
  * Get the name of the error code. Returned pointer is to a static
