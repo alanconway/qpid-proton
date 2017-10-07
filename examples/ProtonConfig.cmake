@@ -37,7 +37,7 @@ set (Proton_Core_INCLUDE_DIRS  ${CMAKE_SOURCE_DIR}/proton-c/include)
 set (Proton_Core_LIBRARIES qpid-proton-core)
 set (Proton_Core_FOUND True)
 
-if (${HAS_PROACTOR})
+if (HAS_PROACTOR)
   set (Proton_Proactor_INCLUDE_DIRS  ${CMAKE_SOURCE_DIR}/proton-c/include)
   set (Proton_Proactor_LIBRARIES qpid-proton-proactor)
   set (Proton_Proactor_FOUND True)
