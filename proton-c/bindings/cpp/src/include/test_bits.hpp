@@ -21,8 +21,9 @@
 
 #include "msg.hpp"
 #include "proton/types.hpp"
+extern "C" {
 #include "../../../../src/tests/test_port.h"
-
+}
 #include <stdexcept>
 #include <iostream>
 #include <iterator>
