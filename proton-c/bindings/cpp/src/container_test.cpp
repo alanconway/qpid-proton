@@ -35,29 +35,6 @@
 
 namespace {
 
-static std::string make_url(const std::string host, int port) {
-    std::ostringstream url;
-    url << "amqp://" << host << ":" << port;
-    return url.str();
-}
-
-int listen_on_random_port(proton::container& c, proton::listener& l, proton::listen_handler* lh=0) {
-    int port = 0;
-    // I'm going to hell for this:
-    std::srand((unsigned int)time(0));
-    while (true) {
-        port = 20000 + (std::rand() % 30000);
-        std::string url = make_url("", port);
-        try {
-            l = lh ? c.listen(url, *lh) : c.listen(url);
-            break;
-        } catch (...) {
-            // keep trying
-        }
-    }
-    return port;
-}
-
 struct test_listen_handler : public proton::listen_handler {
     bool on_open_, on_accept_, on_close_;
     std::string on_error_;
@@ -92,6 +69,7 @@ class test_handler : public proton::messaging_handler {
 
     std::string peer_vhost;
     std::string peer_container_id;
+    test::listen_port port;
     proton::listener listener;
     test_listen_handler listen_handler;
 
@@ -100,8 +78,8 @@ class test_handler : public proton::messaging_handler {
     {}
 
     void on_container_start(proton::container &c) PN_CPP_OVERRIDE {
-        int port = listen_on_random_port(c, listener, &listen_handler);
-        proton::connection conn = c.connect(make_url(host, port), opts);
+        listener = c.listen(port.url(), listen_handler);
+        proton::connection conn = c.connect(port.url(host), opts);
     }
 
     void on_connection_open(proton::connection &c) PN_CPP_OVERRIDE {
@@ -183,13 +161,14 @@ int test_container_bad_address() {
 }
 
 class stop_tester : public proton::messaging_handler {
+    test::listen_port port;
     proton::listener listener;
 
     // Set up a listener which would block forever
     void on_container_start(proton::container& c) PN_CPP_OVERRIDE {
         ASSERT(state==0);
-        int port = listen_on_random_port(c, listener);
-        c.connect(make_url("", port));
+        listener = c.listen(port.url());
+        c.connect(port.url());
         c.auto_stop(false);
         state = 1;
     }
@@ -231,17 +210,17 @@ int test_container_stop() {
 
 struct hang_tester : public proton::messaging_handler {
     proton::listener listener;
-    int port;
+    test::listen_port port;
     bool done;
 
     hang_tester() : done(false) {}
 
     void connect(proton::container* c) {
-        c->connect(make_url("", port));
+        c->connect(port.url());
     }
 
     void on_container_start(proton::container& c) PN_CPP_OVERRIDE {
-        port = listen_on_random_port(c, listener);
+        listener = c.listen(port.url());
         schedule_work(&c, proton::duration(250), &hang_tester::connect, this, &c);
     }
 

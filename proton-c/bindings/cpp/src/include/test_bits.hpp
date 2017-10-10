@@ -21,6 +21,7 @@
 
 #include "msg.hpp"
 #include "proton/types.hpp"
+#include "../../../../src/tests/test_port.h"
 
 #include <stdexcept>
 #include <iostream>
@@ -121,6 +122,23 @@ template <class T> std::ostream& operator<<(std::ostream& o, const many<T>& m) {
     return o;
 }
 
+static std::string make_url(const std::string host, int port) {
+    std::ostringstream url;
+    url << "amqp://" << host << ":" << port;
+    return url.str();
+}
+
+// C++ Wrapper for C test port.
+// Binds to a port with REUSEADDR set so that the port is protected from
+// other processes and can safely be used for listening.
+class listen_port {
+    test_port_t tp;
+  public:
+    listen_port() : tp(test_port("")) {}
+    ~listen_port() { sock_close(tp.sock); }
+    int port() const { return tp.port; }
+    std::string url(const std::string& host="") const { return make_url(host, tp.port); }
+};
 }
 
 namespace std {
