@@ -67,7 +67,11 @@ struct invocable_cloner : invocable {
 struct invocable_wrapper {
     invocable_wrapper(): wrapped_(0) {}
     invocable_wrapper(const invocable_wrapper& w): wrapped_(&w.wrapped_->clone()) {}
-    invocable_wrapper& operator=(invocable_wrapper& that) {std::swap(wrapped_, that.wrapped_); return *this; }
+    invocable_wrapper& operator=(const invocable_wrapper& that) {
+        // FIXME aconway 2017-10-17: not a proper copy
+        std::swap(wrapped_, const_cast<invocable_wrapper&>(that).wrapped_);
+        return *this;
+    }
     ~invocable_wrapper() { delete wrapped_; }
 
     invocable_wrapper(const invocable& i): wrapped_(&i.clone()) {}

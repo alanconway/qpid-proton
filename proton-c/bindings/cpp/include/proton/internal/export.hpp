@@ -65,7 +65,7 @@
 #  elif defined(WIN32)
 #    define PN_CPP_DEPRECATED(message) __declspec(deprecated(message))
 #  else
-#    define PN_CPP_DEPRECATED(message) __attribute__((deprecated(message)))
+#    define PN_CPP_DEPRECATED(message) __attribute__((deprecated))
 #  endif
 #endif
 
