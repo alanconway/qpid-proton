@@ -22,11 +22,14 @@ set (BUILD_CPP_03 OFF CACHE BOOL "Compile the C++ binding as C++03 even when C++
 # This effectively checks for cmake version 3.1 or later
 if (DEFINED CMAKE_CXX_COMPILE_FEATURES)
   if (BUILD_CPP_03)
-    set(STD 98)
+    set(CMAKE_CXX_STANDARD 98)  # Restrict to 98 or earlier
   else ()
-    set(STD 11)
+    set(CMAKE_CXX_STANDARD 11)  # Restrict to 11 or earlier
+    list(FIND CMAKE_CXX_COMPILE_FEATURES cxx_std_11 N) # Check if we actually have 11
+    if(NOT ${N} EQUAL -1)
+      set(HAS_CPP11 TRUE)
+    endif()
   endif ()
-  set(CMAKE_CXX_STANDARD ${STD})
   set(CMAKE_CXX_EXTENSIONS OFF)
 # AStitcher 20170804: Disabled for present - work on this when Windows C++ works
 #  cmake_minimum_required(VERSION 3.1)
@@ -60,9 +63,13 @@ else ()
 endif ()
 
 # Make these CACHE INTERNAL so they will be set for the C++ examples
+# The examples must be built with the same compiler version settings to avoid self-test
+# failures due to mismatched examples and libraries, and with the same -fsanitize flags
+# if set so example executables will be linked correctly with sanitizer runtime libraries.
 set(CXX_EXAMPLE_FLAGS "${CXX_WARNING_FLAGS} ${CMAKE_CXX_FLAGS}  ${CXX_STANDARD}" CACHE INTERNAL "")
 set(CMAKE_CXX_STANDARD ${CMAKE_CXX_STANDARD} CACHE INTERNAL "")
 set(CMAKE_CXX_EXTENSIONS ${CMAKE_CXX_EXTENSIONS} CACHE INTERNAL "")
+set(HAS_CPP11 ${HAS_CPP11} CACHE INTERNAL "")
 
 include_directories(
   "${CMAKE_SOURCE_DIR}/proton-c/include"
