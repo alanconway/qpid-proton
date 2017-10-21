@@ -1,5 +1,5 @@
-#ifndef PROTON_TYPES_FWD_HPP
-#define PROTON_TYPES_FWD_HPP
+#ifndef PROTON_INTERNAL_CONFIG_HPP
+#define PROTON_INTERNAL_CONFIG_HPP
 
 /*
  *
@@ -22,35 +22,33 @@
  *
  */
 
+/// @cond INTERNAL
+
 /// @file
-/// Forward declarations for Proton types used to represent AMQP types.
+///
+/// Configuration macros.
 
-#include "proton/internal/config.hpp"
+/// True if the library was built with C++11 support.
+#cmakedefine01 PN_CPP_SUPPORTS_CPP11
 
-#if PN_CPP_HAS_CPP11
-#include <cstddef>
+/// True if the library was built with multi-threading support.
+/// See @ref container::MULTI_THREADED
+#cmakedefine01 PN_CPP_SUPPORTS_THREADS
+
+// Detect the compiler version and enable C++11 API features if possible.
+#ifndef PN_CPP_HAS_CPP11
+# if defined(__cplusplus) && __cplusplus >= 201103 && PN_CPP_SUPPORTS_CPP11
+#  define PN_CPP_HAS_CPP11 1
+# else
+#  define PN_CPP_HAS_CPP11 0
+# endif
 #endif
 
-namespace proton {
-
-class binary;
-class decimal128;
-class decimal32;
-class decimal64;
-class scalar;
-class symbol;
-class timestamp;
-class duration;
-class uuid;
-class value;
-
-struct null {
-    null() {}
 #if PN_CPP_HAS_CPP11
-    null(std::nullptr_t) {}
+# define PN_CPP_OVERRIDE override
+#else
+# define PN_CPP_OVERRIDE
 #endif
-};
 
-} // proton
 
-#endif // PROTON_TYPES_FWD_HPP
+#endif // PROTON_INTERNAL_CONFIG_HPP

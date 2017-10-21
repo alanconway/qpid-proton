@@ -22,16 +22,16 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "./duration.hpp"
 #include "./fwd.hpp"
 #include "./function.hpp"
-#include "./internal/config.hpp"
 #include "./internal/export.hpp"
 #include "./internal/pn_unique_ptr.hpp"
 
 #include <functional>
 #include <utility>
-#if PN_CPP_HAS_LAMBDAS && PN_CPP_HAS_VARIADIC_TEMPLATES
+#if PN_CPP_HAS_CPP11
 #include <type_traits>
 #endif
 
@@ -72,7 +72,7 @@ struct invocable_wrapper {
         std::swap(wrapped_, newthis.wrapped_);
         return *this;
     }
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     invocable_wrapper(invocable_wrapper&& w): wrapped_(w.wrapped_) {}
     invocable_wrapper& operator=(invocable_wrapper&& that) {delete wrapped_; wrapped_ = that.wrapped_; return *this; }
 #endif
@@ -263,53 +263,15 @@ work make_work(R (*f)(A, B, C), A a, B b, C c) {
 
 } } // internal::v03
 
-#if PN_CPP_HAS_LAMBDAS && PN_CPP_HAS_VARIADIC_TEMPLATES
+#if PN_CPP_HAS_CPP11
+/// A unit of work: a no-argument, no-return callable object e.g. std::function,
+/// std::bind, lambda or function pointer.
+typedef std::function<void()> work;
 
-namespace internal { namespace v11 {
-
-class work {
-  public:
-    /// **Unsettled API**
-    work() {}
-
-    /// **Unsettled API**
-    ///
-    /// Construct a unit of work from anything
-    /// function-like that takes no arguments and returns
-    /// no result.
-    template <class T,
-        // Make sure we don't match the copy or move constructors
-        class = typename std::enable_if<!std::is_same<typename std::decay<T>::type,work>::value>::type
-    >
-    work(T&& f): item_(std::forward<T>(f)) {}
-
-    /// **Unsettled API**
-    ///
-    /// Execute the piece of work
-    void operator()() { item_(); }
-
-    ~work() {}
-
-  private:
-    std::function<void()> item_;
-};
-
-/// **Unsettled API** - Make a unit of work.
-///
-/// Make a unit of work from either a function or a member function
-/// and an object pointer.
-///
-/// **C++ versions** - This C++11 version is just a wrapper for
-/// `std::bind`.
+/// Make a unit of work from a function or member function and object pointer,
+/// A synonym for std::bind.
 template <class... Rest>
-work make_work(Rest&&... r) {
-    return std::bind(std::forward<Rest>(r)...);
-}
-
-} } // internal::v11
-
-using internal::v11::work;
-using internal::v11::make_work;
+work make_work(Rest&&... r) { return std::bind(std::forward<Rest>(r)...); }
 
 #else
 
@@ -317,8 +279,6 @@ using internal::v03::work;
 using internal::v03::make_work;
 
 #endif
-
-/// @endcond
 
 /// **Unsettled API** - A context for thread-safe execution of work.
 ///
@@ -357,7 +317,7 @@ class PN_CPP_CLASS_EXTERN work_queue {
     /// The work may be deferred and executed in another thread.
     ///
     /// @return true if `fn` has been or will be called; false if the
-    /// event loops is ended or `fn` cannot be injected for any other
+    /// event loops is ended or `fn` cannot be added for any other
     /// reason.
     PN_CPP_EXTERN bool add(work fn);
 
@@ -367,7 +327,7 @@ class PN_CPP_CLASS_EXTERN work_queue {
     /// @cond INTERNAL
     // This is a hack to ensure that the C++03 version is declared
     // only during the compilation of the library
-#if PN_CPP_HAS_LAMBDAS && PN_CPP_HAS_VARIADIC_TEMPLATES && defined(qpid_proton_cpp_EXPORTS)
+#if PN_CPP_HAS_CPP11 && defined(qpid_proton_cpp_EXPORTS)
     PN_CPP_EXTERN bool add(internal::v03::work fn);
 #endif
     /// @endcond
@@ -388,7 +348,7 @@ class PN_CPP_CLASS_EXTERN work_queue {
     /// @cond INTERNAL
     // This is a hack to ensure that the C++03 version is declared
     // only during the compilation of the library
-#if PN_CPP_HAS_LAMBDAS && PN_CPP_HAS_VARIADIC_TEMPLATES && defined(qpid_proton_cpp_EXPORTS)
+#if PN_CPP_HAS_CPP11 && defined(qpid_proton_cpp_EXPORTS)
     PN_CPP_EXTERN void schedule(duration, internal::v03::work fn);
 #endif
     /// @endcond

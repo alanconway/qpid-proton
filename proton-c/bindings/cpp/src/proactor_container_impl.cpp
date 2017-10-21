@@ -661,6 +661,8 @@ void container::impl::stop_event() {
 }
 
 void container::impl::run(int threads) {
+    if (threads < 1) threads  = 1; // Always at least one thread (current thread)
+
     // Have to "manually" generate container events
     CALL_ONCE(start_once_, &impl::start_event, this);
 

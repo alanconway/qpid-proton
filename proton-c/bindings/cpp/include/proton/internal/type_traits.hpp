@@ -27,7 +27,7 @@
 // Also provides workarounds for missing type_traits classes on older
 // C++ compilers.
 
-#include "./config.hpp"
+#include "proton/internal/config.hpp"
 #include "../types_fwd.hpp"
 #include "../type_id.hpp"
 
@@ -72,7 +72,7 @@ template <> struct is_signed<signed short> : public true_type {};
 template <> struct is_signed<signed int> : public true_type {};
 template <> struct is_signed<signed long> : public true_type {};
 
-#if PN_CPP_HAS_LONG_LONG_TYPE
+#if PN_CPP_HAS_CPP11
 template <> struct is_integral<unsigned long long> : public true_type {};
 template <> struct is_integral<signed long long> : public true_type {};
 template <> struct is_signed<unsigned long long> : public false_type {};

@@ -26,7 +26,7 @@
 #include "./returned.hpp"
 #include "./types_fwd.hpp"
 
-#include "./internal/config.hpp"
+#include "proton/internal/config.hpp"
 #include "./internal/export.hpp"
 #include "./internal/pn_unique_ptr.hpp"
 
@@ -34,11 +34,6 @@
 
 /// @file
 /// @copybrief proton::container
-
-/// @cond INTERNAL
-/// True if the library can support multithreaded containers.
-#define PN_CPP_SUPPORTS_THREADS PN_CPP_HAS_STD_THREAD && PN_CPP_HAS_STD_MUTEX
-/// @endcond
 
 namespace proton {
 
@@ -54,6 +49,12 @@ namespace proton {
 /// messages.
 class PN_CPP_CLASS_EXTERN container {
   public:
+    /// If true, this is a multi-threaded container and **thread safety**
+    /// comments on @ref container functions apply. If false, the library was
+    /// built without threading support, and this class cannot be used by
+    /// multiple-threads concurrently.
+    static const bool MULTI_THREADED = PN_CPP_SUPPORTS_THREADS;
+
     /// Create a container with a global handler for messaging events.
     ///
     /// **Thread safety** - in a multi-threaded container this handler will be
@@ -312,17 +313,14 @@ class PN_CPP_CLASS_EXTERN container {
     /// **Deprecated** - Use `container::schedule(duration, work)`.
     PN_CPP_EXTERN PN_CPP_DEPRECATED("Use 'container::schedule(duration, work)'") void schedule(duration dur, void_function0& fn);
 
-    /// @cond INTERNAL
-    // This is a hack to ensure that the C++03 version is declared
-    // only during the compilation of the library
-#if PN_CPP_HAS_LAMBDAS && PN_CPP_HAS_VARIADIC_TEMPLATES && defined(qpid_proton_cpp_EXPORTS)
-    PN_CPP_EXTERN void schedule(duration dur, internal::v03::work fn);
-#endif
-    /// @endcond
-
   private:
     class impl;
     internal::pn_unique_ptr<impl> impl_;
+
+    // This is a hack to ensure that the C++03 version is declared during library build.
+#if PN_CPP_HAS_CPP11 && defined(qpid_proton_cpp_EXPORTS)
+    PN_CPP_EXTERN void schedule(duration dur, internal::v03::work fn);
+#endif
 
     /// @cond INTERNAL
   friend class connection_options;

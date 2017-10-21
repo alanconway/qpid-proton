@@ -22,9 +22,9 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "./duration.hpp"
 #include "./fwd.hpp"
-#include "./internal/config.hpp"
 #include "./internal/export.hpp"
 #include "./internal/pn_unique_ptr.hpp"
 #include "./types_fwd.hpp"

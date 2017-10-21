@@ -70,7 +70,7 @@ map<K,T>& map<K,T>::operator=(const map& x) {
     return *this;
 }
 
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
 template <class K, class T>
 map<K,T>::map(map&& x) :
     map_(std::move(x.map_)), value_(std::move(x.value_)) {}

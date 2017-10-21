@@ -20,6 +20,8 @@ enable_language(CXX)
 
 set (BUILD_CPP_03 OFF CACHE BOOL "Compile the C++ binding as C++03 even when C++11 is available")
 
+# First choose the C++ standard version to use
+
 # This effectively checks for cmake version 3.1 or later
 if (DEFINED CMAKE_CXX_COMPILE_FEATURES)
   if (BUILD_CPP_03)
@@ -29,19 +31,7 @@ if (DEFINED CMAKE_CXX_COMPILE_FEATURES)
   endif ()
   set(CMAKE_CXX_STANDARD ${STD})
   set(CMAKE_CXX_EXTENSIONS OFF)
-# AStitcher 20170804: Disabled for present - work on this when Windows C++ works
-#  cmake_minimum_required(VERSION 3.1)
-#  include(WriteCompilerDetectionHeader)
-#  write_compiler_detection_header(
-#    FILE cpp_features.h
-#    PREFIX PN
-#    COMPILERS GNU Clang MSVC SunPro
-#    FEATURES ${CMAKE_CXX_COMPILE_FEATURES}
-#    ALLOW_UNKNOWN_COMPILERS)
-  if (MSVC)  # Compiler feature checks only needed for Visual Studio in this case
-    include(cpp.cmake)
-  endif()
-else ()
+else()
   if (BUILD_CPP_03)
     set(CXX_STANDARD "-std=c++98")
   else ()
@@ -53,12 +43,25 @@ else ()
       set(CXX_STANDARD "-std=c++11")
     elseif(ACCEPTS_CXX0X)
       set(CXX_STANDARD "-std=c++0x")
-      include(cpp.cmake) # Compiler checks needed for C++0x as not all C++11 may be supported
-    else()
-      include(cpp.cmake) # Compiler checks needed as we have no idea whats going on here!
     endif()
   endif()
-endif ()
+endif()
+
+# Now check compiler features
+if (BUILD_CPP_03)     # BUILD_CPP_03 forces all features off, no need for checks
+  set(HAS_CPP11 0)
+else()
+  include(cpp.cmake)            # Check features, set HAS_XXX and -DPN_CPP_HAS_XXX=1 definitions
+endif()
+
+# Variables for config.hpp.in
+set(PN_CPP_SUPPORTS_CPP11 CPP11)
+
+if(HAS_STD_THREAD AND HAS_STD_MUTEX)
+  set(PN_CPP_SUPPORTS_THREADS 1)
+else()
+  set(PN_CPP_SUPPORTS_THREADS 0)
+endif()
 
 # Make these CACHE INTERNAL so they will be set for the C++ examples
 set(CXX_EXAMPLE_FLAGS "${CXX_WARNING_FLAGS} ${CMAKE_CXX_FLAGS} ${CXX_STANDARD}" CACHE INTERNAL "")
@@ -67,7 +70,8 @@ set(CXX_EXAMPLE_LINK_FLAGS "${SANITIZE_FLAGS}" CACHE INTERNAL "")
 include_directories(
   "${CMAKE_SOURCE_DIR}/proton-c/include"
   "${CMAKE_CURRENT_SOURCE_DIR}/include"
-  "${CMAKE_CURRENT_SOURCE_DIR}/src/include")
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/include"
+  "${CMAKE_CURRENT_BINARY_DIR}/include")
 
 add_definitions(${CXX_STANDARD} ${CXX_WARNING_FLAGS} "-DPN_CPP_USE_DEPRECATED_API=1")
 
@@ -144,6 +148,10 @@ set_target_properties (
   LINK_FLAGS "${CATCH_UNDEFINED} ${LTO}"
   )
 
+configure_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include/proton/internal/config.hpp.in
+  ${CMAKE_CURRENT_BINARY_DIR}/include/proton/internal/config.hpp)
+
 ## Install
 
 install(TARGETS qpid-proton-cpp
@@ -161,6 +169,10 @@ if (MSVC)
 endif (MSVC)
 
 install (DIRECTORY "include/proton" DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.hpp")
+
+install (
+  DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/include/proton"
+  DESTINATION ${INCLUDE_INSTALL_DIR} FILES_MATCHING PATTERN "*.hpp")
 
 add_subdirectory(docs)
 add_subdirectory(${CMAKE_SOURCE_DIR}/tests/tools/apps/cpp ${CMAKE_BINARY_DIR}/tests/tools/apps/cpp)

@@ -71,7 +71,7 @@ struct message::impl {
 message::message() : pn_msg_(0) {}
 message::message(const message &m) : pn_msg_(0) { *this = m; }
 
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
 message::message(message &&m) : pn_msg_(0) { swap(*this, m); }
 message& message::operator=(message&& m) {
   swap(*this, m);

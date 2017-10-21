@@ -64,7 +64,7 @@ class message {
     /// Copy a message.
     PN_CPP_EXTERN message& operator=(const message&);
 
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     /// Move a message.
     PN_CPP_EXTERN message(message&&);
 

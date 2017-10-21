@@ -22,7 +22,7 @@
  *
  */
 
-#include "./config.hpp"
+#include "proton/internal/config.hpp"
 
 #include <memory>
 
@@ -43,7 +43,7 @@ template <class T> void swap(pn_unique_ptr<T>& x, pn_unique_ptr<T>& y);
 template <class T> class pn_unique_ptr {
   public:
     pn_unique_ptr(T* p=0) : ptr_(p) {}
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     pn_unique_ptr(pn_unique_ptr&& x) : ptr_(0)  { std::swap(ptr_, x.ptr_); }
 #else
     pn_unique_ptr(const pn_unique_ptr& x) : ptr_() { std::swap(ptr_, const_cast<pn_unique_ptr&>(x).ptr_); }
@@ -54,13 +54,13 @@ template <class T> class pn_unique_ptr {
     T* get() const { return ptr_; }
     void reset(T* p = 0) { pn_unique_ptr<T> tmp(p); std::swap(ptr_, tmp.ptr_); }
     T* release() { T *p = ptr_; ptr_ = 0; return p; }
-#if PN_CPP_HAS_EXPLICIT_CONVERSIONS
+#if PN_CPP_HAS_CPP11
     explicit operator bool() const { return get(); }
 #endif
     bool operator !() const { return !get(); }
     void swap(pn_unique_ptr& x) { std::swap(ptr_, x.ptr_); }
 
-#if PN_CPP_HAS_STD_UNIQUE_PTR
+#if PN_CPP_HAS_CPP11
     operator std::unique_ptr<T>() { T *p = ptr_; ptr_ = 0; return std::unique_ptr<T>(p); }
 #endif
 

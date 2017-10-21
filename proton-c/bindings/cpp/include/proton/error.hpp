@@ -22,7 +22,7 @@
  *
  */
 
-#include "./internal/config.hpp"
+#include "proton/internal/config.hpp"
 #include "./internal/export.hpp"
 
 #include <stdexcept>

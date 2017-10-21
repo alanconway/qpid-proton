@@ -27,7 +27,7 @@
 
 // TODO aconway 2016-03-15: described types, described arrays.
 
-#include "./internal/config.hpp"
+#include "proton/internal/config.hpp"
 
 #include "./annotation_key.hpp"
 #include "./binary.hpp"

@@ -22,10 +22,10 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "../connection_options.hpp"
 #include "../error_condition.hpp"
 #include "../fwd.hpp"
-#include "../internal/config.hpp"
 #include "../types_fwd.hpp"
 
 #include <proton/connection_driver.h>

@@ -22,6 +22,7 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "proton/fwd.hpp"
 #include "proton/container.hpp"
 #include "proton/connection.hpp"

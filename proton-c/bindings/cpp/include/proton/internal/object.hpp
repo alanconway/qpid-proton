@@ -22,7 +22,7 @@
  *
  */
 
-#include "./config.hpp"
+#include "proton/internal/config.hpp"
 #include "./export.hpp"
 #include "./comparable.hpp"
 
@@ -48,7 +48,7 @@ template <class T> class pn_ptr : private pn_ptr_base, private comparable<pn_ptr
     pn_ptr(T* p) : ptr_(p) { incref(ptr_); }
     pn_ptr(const pn_ptr& o) : ptr_(o.ptr_) { incref(ptr_); }
 
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     pn_ptr(pn_ptr&& o) : ptr_(0) { std::swap(ptr_, o.ptr_); }
 #endif
 
@@ -61,7 +61,7 @@ template <class T> class pn_ptr : private pn_ptr_base, private comparable<pn_ptr
 
     bool operator!() const { return !ptr_; }
 
-#if PN_CPP_HAS_EXPLICIT_CONVERSIONS
+#if PN_CPP_HAS_CPP11
     explicit operator bool() const { return !!ptr_; }
 #endif
 
@@ -86,7 +86,7 @@ template <class T> pn_ptr<T> take_ownership(T* p) { return pn_ptr<T>::take_owner
 template <class T> class object : private comparable<object<T> > {
   public:
     bool operator!() const { return !object_; }
-#if PN_CPP_HAS_EXPLICIT_CONVERSIONS
+#if PN_CPP_HAS_CPP11
     explicit operator bool() const { return object_; }
 #endif
 

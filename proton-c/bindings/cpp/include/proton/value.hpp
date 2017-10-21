@@ -69,7 +69,7 @@ class value : public internal::value_base, private internal::comparable<value> {
     /// @{
     PN_CPP_EXTERN value(const value&);
     PN_CPP_EXTERN value& operator=(const value&);
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     PN_CPP_EXTERN value(value&&);
     PN_CPP_EXTERN value& operator=(value&&);
 #endif

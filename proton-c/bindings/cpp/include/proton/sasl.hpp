@@ -22,8 +22,8 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "./internal/export.hpp"
-#include "./internal/config.hpp"
 #include "./internal/object.hpp"
 
 #include <proton/sasl.h>
@@ -41,7 +41,7 @@ class sasl {
     sasl(pn_sasl_t* s) : object_(s) {}
     /// @endcond
 
-#if PN_CPP_HAS_DELETED_FUNCTIONS
+#if PN_CPP_HAS_CPP11
     sasl() = delete;
 #else
     sasl();

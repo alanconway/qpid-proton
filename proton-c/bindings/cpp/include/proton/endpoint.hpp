@@ -22,9 +22,9 @@
  *
  */
 
+#include "proton/internal/config.hpp"
 #include "./fwd.hpp"
 #include "./error_condition.hpp"
-#include "./internal/config.hpp"
 #include "./internal/export.hpp"
 
 /// @file
@@ -64,15 +64,16 @@ PN_CPP_CLASS_EXTERN endpoint {
     /// @see endpoint_lifecycle
     virtual void close(const error_condition&) = 0;
 
-#if PN_CPP_HAS_DEFAULTED_FUNCTIONS && PN_CPP_HAS_DEFAULTED_MOVE_INITIALIZERS
+#if PN_CPP_HAS_CPP11
     // Make everything explicit for C++11 compilers
 
     /// @cond INTERNAL
     endpoint() = default;
     endpoint& operator=(const endpoint&) = default;
     endpoint(const endpoint&) = default;
-    endpoint& operator=(endpoint&&) = default;
-    endpoint(endpoint&&) = default;
+    // Some compilers (MSVC) claim to be C++11 but don't like defaulted move/copy
+    // endpoint& operator=(endpoint&&) = default;
+    // endpoint(endpoint&&) = default;
     /// @endcond
 #endif
 };

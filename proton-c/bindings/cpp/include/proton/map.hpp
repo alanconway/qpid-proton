@@ -79,7 +79,7 @@ class PN_CPP_CLASS_EXTERN map {
     /// Copy a map.
     PN_CPP_EXTERN map& operator=(const map&);
 
-#if PN_CPP_HAS_RVALUE_REFERENCES
+#if PN_CPP_HAS_CPP11
     /// Move a map.
     PN_CPP_EXTERN map(map&&);
 
