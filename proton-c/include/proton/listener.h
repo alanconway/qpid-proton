@@ -56,8 +56,12 @@ PNP_EXTERN pn_listener_t *pn_listener(void);
 PNP_EXTERN void pn_listener_free(pn_listener_t *l);
 
 /**
- * Accept an incoming connection request on @p transport bound to @p connection.
+ * Accept an incoming connection request using @p transport and @p connection,
+ * which can be configured before the call.
+ *
  * Call after a @ref PN_LISTENER_ACCEPT event.
+ *
+ * Errors are returned as @ref PN_TRANSPORT_CLOSED events by pn_proactor_wait().
  *
  * @param[in] listener the listener
  * @param[in] connection If NULL a new connection is created.
@@ -65,7 +69,13 @@ PNP_EXTERN void pn_listener_free(pn_listener_t *l);
  * @param[in] transport If NULL a new transport is created.
  * Memory management is the same as for pn_proactor_connect()
  */
-PNP_EXTERN void pn_listener_accept(pn_listener_t *listener, pn_connection_t *connection, pn_transport_t *transport);
+PNP_EXTERN void pn_listener_accept2(pn_listener_t *listener, pn_connection_t *connection, pn_transport_t *transport);
+
+/**
+ * Bind @p connection to a new transport accepted from @p listener.
+ * Equivalent to pn_listener_accept2(listener, connection, NULL.
+ */
+PNP_EXTERN void pn_listener_accept(pn_listener_t* listener, pn_connection_t *connection);
 
 /**
  * Get the error condition for a listener.

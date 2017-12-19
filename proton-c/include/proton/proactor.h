@@ -119,7 +119,13 @@ PNP_EXTERN void pn_proactor_free(pn_proactor_t *proactor);
  * An empty port will connect to the standard AMQP port (5672).
  *
  */
-PNP_EXTERN void pn_proactor_connect(pn_proactor_t *proactor, pn_connection_t *connection, pn_transport_t *transport, const char *addr);
+PNP_EXTERN void pn_proactor_connect2(pn_proactor_t *proactor, pn_connection_t *connection, pn_transport_t *transport, const char *addr);
+
+/**
+ * Bind @p connection to a new @ref transport connected to @p addr.
+ * Equivalent to pn_proactor_connect2(proactor, connection, NULL, addr)
+ */
+PNP_EXTERN void pn_proactor_connect(pn_proactor_t *proactor, pn_connection_t *connection, const char *addr);
 
 /**
  * Start listening for incoming connections.
