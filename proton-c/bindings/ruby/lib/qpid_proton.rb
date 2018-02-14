@@ -94,9 +94,4 @@ require "handler/reactor_messaging_adapter"
 require "handler/messaging_handler" # Keep original name for compatibility
 require "reactor/container"
 
-# DEPRECATED Messenger API classes
-require "messenger/subscription"
-require "messenger/tracker_status"
-require "messenger/tracker"
-require "messenger/messenger"
 
