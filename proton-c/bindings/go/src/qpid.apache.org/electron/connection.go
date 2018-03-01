@@ -356,13 +356,23 @@ func Heartbeat(delay time.Duration) ConnectionOption {
 	return func(c *connection) { c.engine.Transport().SetIdleTimeout(2 * delay) }
 }
 
+var globalSASLConfig struct {
+	lock sync.Mutex
+	name string
+	dir  string
+}
+
 // GlobalSASLConfigDir sets the SASL configuration directory for every
 // Connection created in this process. If not called, the default is determined
 // by your SASL installation.
 //
 // You can set SASLAllowInsecure and SASLAllowedMechs on individual connections.
 //
-func GlobalSASLConfigDir(dir string) { globalSASLConfigDir = dir }
+func GlobalSASLConfigDir(dir string) {
+	globalSASLConfig.lock.Lock()
+	globalSASLConfig.dir = dir
+	globalSASLConfig.lock.Unlock()
+}
 
 // GlobalSASLConfigName sets the SASL configuration name for every Connection
 // created in this process. If not called the default is "proton-server".
@@ -372,7 +382,11 @@ func GlobalSASLConfigDir(dir string) { globalSASLConfigDir = dir }
 //
 // You can set SASLAllowInsecure and SASLAllowedMechs on individual connections.
 //
-func GlobalSASLConfigName(dir string) { globalSASLConfigName = dir }
+func GlobalSASLConfigName(name string) {
+	globalSASLConfig.lock.Lock()
+	globalSASLConfig.name = name
+	globalSASLConfig.lock.Unlock()
+}
 
 // Do we support extended SASL negotiation?
 // All implementations of Proton support ANONYMOUS and EXTERNAL on both
@@ -382,21 +396,20 @@ func GlobalSASLConfigName(dir string) { globalSASLConfigName = dir }
 // to support other mechanisms beyond these basic ones.
 func SASLExtended() bool { return proton.SASLExtended() }
 
-var (
-	globalSASLConfigName string
-	globalSASLConfigDir  string
-)
-
+// Apply the global SASL configuration to a proton.Engine
+//
 // TODO aconway 2016-09-15: Current pn_sasl C impl config is broken, so all we
 // can realistically offer is global configuration. Later if/when the pn_sasl C
 // impl is fixed we can offer per connection over-rides.
 func globalSASLInit(eng *proton.Engine) {
 	sasl := eng.Transport().SASL()
-	if globalSASLConfigName != "" {
-		sasl.ConfigName(globalSASLConfigName)
+	globalSASLConfig.lock.Lock()
+	defer globalSASLConfig.lock.Unlock()
+	if globalSASLConfig.name != "" {
+		sasl.ConfigName(globalSASLConfig.name)
 	}
-	if globalSASLConfigDir != "" {
-		sasl.ConfigPath(globalSASLConfigDir)
+	if globalSASLConfig.dir != "" {
+		sasl.ConfigPath(globalSASLConfig.dir)
 	}
 }
 
