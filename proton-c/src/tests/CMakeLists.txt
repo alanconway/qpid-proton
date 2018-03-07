@@ -22,15 +22,25 @@ add_definitions(${COMPILE_WARNING_FLAGS} ${COMPILE_PLATFORM_FLAGS})
 configure_file(test_config.h.in test_config.h)
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 
-macro (pn_add_c_test test)
+macro (pn_build_c_test test)
   add_executable (${test} ${ARGN})
   target_link_libraries (${test} qpid-proton-core ${PLATFORM_LIBS})
   if (BUILD_WITH_CXX)
     set_source_files_properties (${ARGN} PROPERTIES LANGUAGE CXX)
   endif (BUILD_WITH_CXX)
+endmacro()
+
+macro (pn_add_c_test test)
+  pn_build_c_test(${test} ${ARGN})
   add_test (NAME ${test}
     COMMAND ${env_py} -- "PATH=$<TARGET_FILE_DIR:qpid-proton-core>" ${memcheck-cmd} $<TARGET_FILE:${test}>)
 endmacro(pn_add_c_test)
+
+macro (pn_add_c_race_test test)
+  pn_build_c_test(${test} ${ARGN})
+  add_test (NAME ${test}
+    COMMAND ${env_py} -- "PATH=$<TARGET_FILE_DIR:qpid-proton-core>" ${racecheck-cmd} $<TARGET_FILE:${test}>)
+endmacro(pn_add_c_race_test)
 
 pn_add_c_test (c-object-tests object.c)
 pn_add_c_test (c-message-tests message.c)
@@ -41,6 +51,9 @@ pn_add_c_test (c-data-tests data.c)
 pn_add_c_test (c-condition-tests condition.c)
 pn_add_c_test (c-connection-driver-tests connection_driver.c)
 pn_add_c_test (c-ssl-tests ssl.c)
+
+pn_add_c_race_test (c-threaderciser threaderciser.c)
+target_link_libraries (c-threaderciser pthread qpid-proton-proactor)
 
 pn_add_c_test (c-parse-url-tests parse-url.c)
 target_link_libraries (c-parse-url-tests qpid-proton)
