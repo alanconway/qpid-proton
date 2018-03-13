@@ -59,22 +59,28 @@
 #define TIMEOUT_MAX 100         /* Milliseconds */
 #define SLEEP_MAX 100           /* Milliseconds */
 
-static pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
-static size_t debug_count = 0;
+static int assert_no_err(int n) { assert(n >= 0); return n; }
+
 static bool debug_enable = false;
 
-void debug(void *obj, const char *fmt, ...) {
-  pthread_mutex_lock(&debug_lock);
-  ++debug_count;
-  if (debug_enable) {
-    fprintf(stderr, "%lx [%p] ", pthread_self(), obj);
+/*
+   NOTE: We don't use any sync or atomics in debug() to avoid additional memory
+   barriers that might mask race conditions. We print the message in a single
+   call to fprintf to minimise intermingling.
+*/
+static void debug(void *obj, const char *fmt, ...) {
+  if (!debug_enable) return;
+  char msg[256];
+  char *i = msg;
+  char *end = i + sizeof(msg);
+  i += assert_no_err(snprintf(i, end-i, "%lx [%p] ", pthread_self(), obj));
+  if (i < end) {
     va_list ap;
     va_start(ap, fmt);
-    vfprintf(stderr, fmt, ap);
+    i += assert_no_err(vsnprintf(i, end-i, fmt, ap));
     va_end(ap);
-    fprintf(stderr, "\n");
   }
-  pthread_mutex_unlock(&debug_lock);
+  fprintf(stderr, "%s\n", msg);
 }
 
 /* Thread safe pools of structs.
@@ -506,5 +512,4 @@ int main(int argc, const char* argv[]) {
   }
   free(thread);
   global_destroy(&g);
-  printf("threaderciser actions: %zd\n", debug_count);
 }

@@ -1,0 +1,5 @@
+{
+   Benign race in pni_log_enabled, worst case - extra check of PN_TRACE_LOG env var.
+   Helgrind:Race
+   fun:pni_log_enabled
+}
