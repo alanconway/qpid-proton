@@ -348,36 +348,10 @@ void global_set_shutdown(global *g, bool set) {
   pthread_mutex_unlock(&g->lock);
 }
 
-/* NOTE: listen/connect/accept must be synchronized with shutdown */
-
-void global_listen(global *g) {
-  pthread_mutex_lock(&g->lock);
-  if (!g->shutdown) lpool_listen(&g->listeners, g->proactor);
-  pthread_mutex_unlock(&g->lock);
-}
-
-/* addr=NULL means use random choice of lpool listeners */
-void global_connect(global *g, const char *addr) {
+void global_connect(global *g) {
   char a[PN_MAX_ADDR];
-  if (!addr) {
-    lpool_addr(&g->listeners, a, sizeof(a));
-    addr = a;
-  }
-  pthread_mutex_lock(&g->lock);
-  if (!g->shutdown) cpool_connect(&g->connections_active, g->proactor, addr);
-  pthread_mutex_unlock(&g->lock);
-}
-
-/* FIXME aconway 2018-03-12:  */
-/* void global_accept(global *g) { */
-/*   pthread_mutex_lock(&g->lock); */
-/*   pthread_mutex_unlock(&g->lock); */
-/* } */
-
-void global_timeout(global *g) {
-  int t = rand() % TIMEOUT_MAX;
-  debug(NULL, "timeout %d", t);
-  pn_proactor_set_timeout(g->proactor, t);
+  lpool_addr(&g->listeners, a, sizeof(a));
+  cpool_connect(&g->connections_active, g->proactor, a);
 }
 
 /* Return true with given probability */
@@ -388,12 +362,13 @@ static bool maybe(double probability) {
 
 /* Run random activities that can be done from any thread. */
 static void global_do_stuff(global *g) {
-  if (maybe(0.5)) global_connect(g, NULL);
-  if (maybe(0.3)) global_listen(g);
+  if (global_get_shutdown(g)) return;
+  if (maybe(0.5)) global_connect(g);
+  if (maybe(0.3)) lpool_listen(&g->listeners, g->proactor);
   if (maybe(0.5)) cpool_wake(&g->connections_active);
   if (maybe(0.5)) cpool_wake(&g->connections_idle);
   if (maybe(0.1)) lpool_close(&g->listeners);
-  if (maybe(0.5)) global_timeout(g);
+  if (maybe(0.5)) pn_proactor_set_timeout(g->proactor, rand() % TIMEOUT_MAX);
 }
 
 static void* user_thread(void* void_g) {
@@ -417,7 +392,7 @@ static bool handle(global *g, pn_event_t *e) {
    case PN_LISTENER_OPEN: {
      ulistener *u = (ulistener*)pn_listener_get_context(pn_event_listener(e));
      ulistener_on_open(u);
-     global_connect(g, u->addr); /* Start at least one connection */
+     cpool_connect(&g->connections_active, g->proactor, u->addr); /* Initial connection */
      break;
    }
    case PN_LISTENER_CLOSE: {
@@ -494,22 +469,25 @@ int main(int argc, const char* argv[]) {
   /* Set up global state, start threads */
   global g;
   global_init(&g, threads);
-  global_listen(&g);            /* Start initial listener */
+  lpool_listen(&g.listeners, g.proactor); /* Start initial listener */
 
-  pthread_t *thread = (pthread_t*)calloc(threads, sizeof(*thread));
-  int i = 0;
-  while (i < threads) {
-    pthread_create(&thread[i++], NULL, user_thread, &g);
-    pthread_create(&thread[i++], NULL, proactor_thread, &g);
+  pthread_t *user_threads = (pthread_t*)calloc(threads/2, sizeof(pthread_t));
+  pthread_t *proactor_threads = (pthread_t*)calloc(threads/2, sizeof(pthread_t));
+  int i;
+  for (i = 0; i < threads/2; ++i) {
+    pthread_create(&user_threads[i], NULL, user_thread, &g);
+    pthread_create(&proactor_threads[i], NULL, proactor_thread, &g);
   }
   millisleep(runtime*1000);
+
   debug(NULL, "shut down");
   global_set_shutdown(&g, true);
+  void *ignore;
+  for (i = 0; i < threads/2; ++i) pthread_join(user_threads[i], &ignore);
   pn_proactor_disconnect(g.proactor, NULL);
-  for (i = 0; i < threads; ++i) {
-    void *ignore;
-    pthread_join(thread[i], &ignore);
-  }
-  free(thread);
+  for (i = 0; i < threads/2; ++i) pthread_join(proactor_threads[i], &ignore);
+
+  free(user_threads);
+  free(proactor_threads);
   global_destroy(&g);
 }
