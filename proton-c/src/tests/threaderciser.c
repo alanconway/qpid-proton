@@ -59,6 +59,12 @@
 #define TIMEOUT_MAX 100         /* Milliseconds */
 #define SLEEP_MAX 100           /* Milliseconds */
 
+/* Set of actions that can be enabled/disabled */
+typedef enum { A_LISTEN, A_LCLOSE, A_CONNECT, A_CCLOSE, A_WAKE, A_TIMEOUT } action;
+const char* action_name[] = { "listen", "lclose", "connect", "cclose", "wake", "timeout" };
+#define action_count (sizeof(action_name)/sizeof(*action_name))
+bool action_enabled[action_count] = { 0 } ;
+
 static int assert_no_err(int n) { assert(n >= 0); return n; }
 
 static bool debug_enable = false;
@@ -68,12 +74,12 @@ static bool debug_enable = false;
    barriers that might mask race conditions. We print the message in a single
    call to fprintf to minimise intermingling.
 */
-static void debug(void *obj, const char *fmt, ...) {
+static void debug(const char *fmt, ...) {
   if (!debug_enable) return;
   char msg[256];
   char *i = msg;
   char *end = i + sizeof(msg);
-  i += assert_no_err(snprintf(i, end-i, "%lx [%p] ", pthread_self(), obj));
+  i += assert_no_err(snprintf(i, end-i, "(%lx) ", pthread_self()));
   if (i < end) {
     va_list ap;
     va_start(ap, fmt);
@@ -81,6 +87,10 @@ static void debug(void *obj, const char *fmt, ...) {
     va_end(ap);
   }
   fprintf(stderr, "%s\n", msg);
+}
+
+static void debuga(action a, void *id) {
+  debug("[%p] %s", id, action_name[a]);
 }
 
 /* Thread safe pools of structs.
@@ -196,9 +206,10 @@ static void uconnection_free(uconnection* u) {
 }
 
 void cpool_connect(cpool *cp, pn_proactor_t *proactor, const char *addr) {
+  if (!action_enabled[A_CONNECT]) return;
   uconnection *u = uconnection_new();
   if (cpool_add(cp, u)) {
-    debug(u, "connection start %s", addr);
+    debuga(A_CONNECT, u->pn_connection);
     pn_proactor_connect(proactor, u->pn_connection, addr);
   } else {
     uconnection_free(u);
@@ -206,8 +217,11 @@ void cpool_connect(cpool *cp, pn_proactor_t *proactor, const char *addr) {
 }
 
 void cpool_wake(cpool *cp) {
+  if (!action_enabled[A_WAKE]) return;
   uconnection *u = cpool_pick(cp);
   if (u) {
+    debuga(A_WAKE, u->pn_connection);
+    /* Required locking: the application may not call wake on a freed connection */
     pthread_mutex_lock(&u->lock);
     if (u && u->pn_connection) pn_connection_wake(u->pn_connection);
     pthread_mutex_unlock(&u->lock);
@@ -216,7 +230,6 @@ void cpool_wake(cpool *cp) {
 }
 
 static void uconnection_on_close(uconnection *u) {
-  debug(u, "connection closed");
   pthread_mutex_lock(&u->lock);
   u->pn_connection = NULL;
   pthread_mutex_unlock(&u->lock);
@@ -251,11 +264,12 @@ static void ulistener_free(ulistener *u) {
 }
 
 static void lpool_listen(lpool *lp, pn_proactor_t *proactor) {
+  if (!action_enabled[A_LISTEN]) return;
   char a[PN_MAX_ADDR];
   pn_proactor_addr(a, sizeof(a), "", "0");
   ulistener *u = ulistener_new();
   if (lpool_add(lp, u)) {
-    debug(u, "listener start");
+    debuga(A_LISTEN,  u->pn_listener);
     pn_proactor_listen(proactor, u->pn_listener, a, BACKLOG);
   } else {
     pn_listener_free(u->pn_listener); /* Won't be freed by proactor */
@@ -268,11 +282,10 @@ static void ulistener_on_open(ulistener *u) {
   pthread_mutex_lock(&u->lock);
   if (u->pn_listener) pn_netaddr_str(pn_listener_addr(u->pn_listener), u->addr, sizeof(u->addr));
   pthread_mutex_unlock(&u->lock);
-  debug(u, "listening on %s", u->addr);
+  debug("[%p] listening on %s", u->pn_listener, u->addr);
 }
 
 static void ulistener_on_close(ulistener *u) {
-  debug(u, "listener closed %s", u->addr);
   pthread_mutex_lock(&u->lock);
   u->pn_listener = NULL;
   pthread_mutex_unlock(&u->lock);
@@ -294,9 +307,10 @@ static void lpool_addr(lpool *lp, char* a, size_t s) {
 }
 
 void lpool_close(lpool *lp) {
+  if (!action_enabled[A_LCLOSE]) return;
   ulistener *u = lpool_pick(lp);
   if (u) {
-    debug(u, "listener close %s", u->addr);
+    debuga(A_LCLOSE, u->pn_listener);
     pthread_mutex_lock(&u->lock);
     if (u->pn_listener) pn_listener_close(u->pn_listener);
     pthread_mutex_unlock(&u->lock);
@@ -368,17 +382,20 @@ static void global_do_stuff(global *g) {
   if (maybe(0.5)) cpool_wake(&g->connections_active);
   if (maybe(0.5)) cpool_wake(&g->connections_idle);
   if (maybe(0.1)) lpool_close(&g->listeners);
-  if (maybe(0.5)) pn_proactor_set_timeout(g->proactor, rand() % TIMEOUT_MAX);
+  if (action_enabled[A_TIMEOUT] && maybe(0.5)) {
+    debuga(A_TIMEOUT, g->proactor);
+    pn_proactor_set_timeout(g->proactor, rand() % TIMEOUT_MAX);
+  }
 }
 
 static void* user_thread(void* void_g) {
-  debug(NULL, "user_thread start");
+  debug("user_thread start");
   global *g = (global*)void_g;
   while (!global_get_shutdown(g)) {
     global_do_stuff(g);
     millisleep(rand() % SLEEP_MAX);
   }
-  debug(NULL, "user_thread end");
+  debug("user_thread end");
   return NULL;
 }
 
@@ -420,7 +437,7 @@ static bool handle(global *g, pn_event_t *e) {
 }
 
 static void* proactor_thread(void* void_g) {
-  debug(NULL, "proactor_thread start");
+  debug("proactor_thread start");
   global *g = (global*) void_g;
   bool ok = true;
   while (ok) {
@@ -431,7 +448,7 @@ static void* proactor_thread(void* void_g) {
     }
     pn_proactor_done(g->proactor, events);
   }
-  debug(NULL, "proactor_thread end");
+  debug("proactor_thread end");
   return NULL;
 }
 
@@ -440,47 +457,73 @@ static void* proactor_thread(void* void_g) {
 static const int default_runtime = 1;
 static const int default_threads = 8;
 
-void usage(const char *prog, const char *msg) {
-  if (msg) fprintf(stderr, "%s\n", msg);
-  fprintf(stderr, "usage: %s [TIME [THREADS]]\n", prog);
-  fprintf(stderr, "  TIME: total run-time in seconds (default %d)\n", default_runtime);
-  fprintf(stderr, "  THREADS: total number of threads (default %d)\n", default_threads);
-  fprintf(stderr, "environment: set PN_TRACE_THR to print actions to stderr\n");
+void usage(const char **argv, const char **arg, const char **end) {
+  fprintf(stderr, "usage: %s [options]\n", argv[0]);
+  fprintf(stderr, "  -time TIME: total run-time in seconds (default %d)\n", default_runtime);
+  fprintf(stderr, "  -threads THREADS: total number of threads (default %d)\n", default_threads);
+  fprintf(stderr, "  -debug: print debug messages\n");
+  fprintf(stderr, " ");
+  for (int i = 0; i < (int)action_count; ++i) fprintf(stderr, " -%s", action_name[i]);
+  fprintf(stderr, ": enable actions\n\n");
+
+  fprintf(stderr, "bad argument: ");
+  for (const char **a = argv+1; a < arg; ++a) fprintf(stderr, "%s ", *a);
+  fprintf(stderr, ">>> %s <<<", *arg++);
+  for (; arg < end; ++arg) fprintf(stderr, " %s", *arg);
   exit(1);
 }
 
 int main(int argc, const char* argv[]) {
   const char **arg = argv + 1;
   const char **end = argv + argc;
-
   int runtime = default_runtime;
-  if (arg < end) runtime = atoi(*arg++);
-  if (runtime <= 0) usage(argv[0], "invalid time");
-
   int threads = default_threads;
-  if (arg < end) threads = atoi(*arg++);
-  if (threads <= 0) usage(argv[0], "invalid thread count");
-  if (threads % 2) threads += 1; /* Round up to even: half proactor, half user */
 
-  if (arg < end) usage(argv[0], "too many arguments");
-
-  debug_enable = getenv("PN_TRACE_THR");
+  while (arg < end) {
+    if (!strcmp(*arg, "-time") && ++arg < end) {
+      runtime = atoi(*arg);
+      if (runtime <= 0) usage(argv, arg, end);
+    }
+    else if (!strcmp(*arg, "-threads") && ++arg < end) {
+      threads = atoi(*arg);
+      if (threads <= 0) usage(argv, arg, end);
+      if (threads % 2) threads += 1; /* Round up to even: half proactor, half user */
+    }
+    else if (!strcmp(*arg, "-debug")) {
+      debug_enable = true;
+    }
+    else if (**arg == '-') {
+      size_t i = 0;
+      while (i < action_count && strcmp((*arg)+1, action_name[i])) ++i;
+      if (i == action_count) usage(argv, arg, end);
+      action_enabled[i] = true;
+    } else {
+      break;
+    }
+    ++arg;
+  }
+  int i = 0;
+  /* If no actions are requested on command line, enable them all */
+  while (i < (int)action_count && !action_enabled[i]) ++i;
+  if (i == action_count) {
+    for (i = 0; i < (int)action_count; ++i) action_enabled[i] = true;
+  }
 
   /* Set up global state, start threads */
+  debug("threaderciser start threads=%d, time=%d\n", threads, runtime);
   global g;
   global_init(&g, threads);
   lpool_listen(&g.listeners, g.proactor); /* Start initial listener */
 
   pthread_t *user_threads = (pthread_t*)calloc(threads/2, sizeof(pthread_t));
   pthread_t *proactor_threads = (pthread_t*)calloc(threads/2, sizeof(pthread_t));
-  int i;
   for (i = 0; i < threads/2; ++i) {
     pthread_create(&user_threads[i], NULL, user_thread, &g);
     pthread_create(&proactor_threads[i], NULL, proactor_thread, &g);
   }
   millisleep(runtime*1000);
 
-  debug(NULL, "shut down");
+  debug("shut down");
   global_set_shutdown(&g, true);
   void *ignore;
   for (i = 0; i < threads/2; ++i) pthread_join(user_threads[i], &ignore);
