@@ -48,10 +48,13 @@ class HelloWorld < Qpid::Proton::MessagingHandler
   end
 end
 
-if ARGV.size != 2
-  STDERR.puts "Usage: #{__FILE__} URL ADDRESS
+if /^--?h(elp)?$/ =~ ARGV[0]
+  STDERR.puts "Usage: #{__FILE__} [URL [ADDRESS]]
 Connect to URL, send a message to ADDRESS and receive it back"
   return 1
 end
 url, address = ARGV
+url ||= ""                      # Listen on local host, standard AMQP port
+address ||= "examples"          # Default AMQP address
+
 Qpid::Proton::Container.new(HelloWorld.new(url, address)).run

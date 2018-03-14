@@ -70,10 +70,13 @@ REQUESTS = ["Twas brillig, and the slithy toves",
             "All mimsy were the borogroves,",
             "And the mome raths outgrabe."]
 
-if ARGV.size != 2
-  STDERR.puts "Usage: #{__FILE__} URL ADDRESS
-Connect to URL and send messages to ADDRESS"
+if /^--?h(elp)?$/ =~ ARGV[0]
+  STDERR.puts "Usage: #{__FILE__} [URL]
+Start an example broker listening on URL"
   return 1
 end
 url, address = ARGV
+url ||= ""                      # Listen on local host, standard AMQP port
+address ||= "examples"          # Default AMQP address
+
 Qpid::Proton::Container.new(Client.new(url, address, REQUESTS)).run

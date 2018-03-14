@@ -53,11 +53,14 @@ class SimpleSend < Qpid::Proton::MessagingHandler
   end
 end
 
-unless (2..3).include? ARGV.size
-  STDERR.puts "Usage: #{__FILE__} URL ADDRESS [COUNT]}
+if /^--?h(elp)?$/ =~ ARGV[0]
+  STDERR.puts "Usage: #{__FILE__} [URL [ADDRESS [COUNT]]]
 Connect to URL and send COUNT messages to ADDRESS"
   return 1
 end
 url, address, count = ARGV
+url ||= ""                      # Listen on local host, standard AMQP port
+address ||= "examples"          # Default AMQP address
 count = Integer(count || 10)
+
 Qpid::Proton::Container.new(SimpleSend.new(url, address, count)).run

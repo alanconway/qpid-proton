@@ -158,10 +158,12 @@ class Broker < Qpid::Proton::MessagingHandler
 
 end
 
-if ARGV.size != 1
-  STDERR.puts "Usage: #{__FILE__} URL
+if /^--?h(elp)?$/ =~ ARGV[0]
+  STDERR.puts "Usage: #{__FILE__} [URL]
 Start an example broker listening on URL"
   return 1
 end
 url, = ARGV
+url ||= ""                      # Listen on local host, standard AMQP port
+
 Qpid::Proton::Container.new(Broker.new(url)).run

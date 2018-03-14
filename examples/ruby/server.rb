@@ -61,10 +61,13 @@ class Server < Qpid::Proton::MessagingHandler
   end
 end
 
-if ARGV.size != 2
-  STDERR.puts "Usage: #{__FILE__} URL ADDRESS
+if /^--?h(elp)?$/ =~ ARGV[0]
+  STDERR.puts "Usage: #{__FILE__} [URL [ADDRESS]]
 Server listening on URL, reply to messages to ADDRESS"
   return 1
 end
 url, address = ARGV
+url ||= ""                      # Listen on local host, standard AMQP port
+address ||= "examples"          # Default AMQP address
+
 Qpid::Proton::Container.new(Server.new(url, address)).run
