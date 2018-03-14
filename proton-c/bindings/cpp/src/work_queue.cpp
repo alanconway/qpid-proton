@@ -27,6 +27,7 @@
 
 #include <proton/session.h>
 #include <proton/link.h>
+#include <proton/delivery.h>
 
 namespace proton {
 
@@ -83,6 +84,10 @@ work_queue& work_queue::get(pn_session_t* s) {
 
 work_queue& work_queue::get(pn_link_t* l) {
     return get(pn_link_session(l));
+}
+
+work_queue& work_queue::get(pn_delivery_t* d) {
+    return get(pn_delivery_link(d));
 }
 
 }

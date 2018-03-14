@@ -31,6 +31,7 @@
 
 namespace proton {
 
+template <class T> class handle;
 template <class T> class returned;
 
 namespace internal {
@@ -102,6 +103,7 @@ template <class T> class object : private comparable<object<T> > {
     friend bool operator<(const object& a, const object& b) { return a.object_ < b.object_; }
     friend std::ostream& operator<<(std::ostream& o, const object& a) { o << a.object_.inspect(); return o; }
 
+  template <class U> friend class proton::handle;
   template <class U> friend class proton::returned;
 };
 

@@ -38,6 +38,7 @@
 struct pn_connection_t;
 struct pn_session_t;
 struct pn_link_t;
+struct pn_delivery_t;
 
 /// @file
 /// @copybrief proton::work_queue
@@ -45,6 +46,8 @@ struct pn_link_t;
 namespace proton {
 
 /// @cond INTERNAL
+
+template <class T> class handle;
 
 namespace internal { namespace v03 {
 
@@ -397,12 +400,14 @@ class PN_CPP_CLASS_EXTERN work_queue {
     PN_CPP_EXTERN static work_queue& get(pn_connection_t*);
     PN_CPP_EXTERN static work_queue& get(pn_session_t*);
     PN_CPP_EXTERN static work_queue& get(pn_link_t*);
+    PN_CPP_EXTERN static work_queue& get(pn_delivery_t*);
 
     internal::pn_unique_ptr<impl> impl_;
 
     /// @cond INTERNAL
   friend class container;
   friend class io::connection_driver;
+  template <class U> friend class proton::handle;
     /// @endcond
 };
 

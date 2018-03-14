@@ -94,7 +94,9 @@ if(HAS_ENOUGH_CPP11)
   if (Threads_FOUND)
     foreach(example
         multithreaded_client
-        multithreaded_client_flow_control)
+        multithreaded_client_flow_control
+        multithreaded_processor
+        )
       add_executable(${example} ${example}.cpp)
       target_link_libraries(${example} ${CMAKE_THREAD_LIBS_INIT})
     endforeach()

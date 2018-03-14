@@ -112,6 +112,7 @@ set(qpid-proton-cpp-source
   src/endpoint.cpp
   src/error.cpp
   src/error_condition.cpp
+  src/handle.cpp
   src/handler.cpp
   src/link.cpp
   src/link_namer.cpp
