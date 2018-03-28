@@ -89,6 +89,7 @@ module Qpid::Proton
       @properties = {}
       @instructions = {}
       @annotations = {}
+      @body = nil
       self.body = body unless body.nil?
       if !opts.nil? then
         opts.each do |k, v|
