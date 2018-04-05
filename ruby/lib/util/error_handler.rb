@@ -40,8 +40,6 @@ module Qpid::Proton::Util
       wrapped_method_name = "_excwrap_#{original_method_name}"
       alias_method wrapped_method_name, original_method_name
       define_method original_method_name do |*args, &block|
-        # need to get a reference to the method object itself since
-        # calls to Class.send interfere with Messenger.send
         method = self.method(wrapped_method_name.to_sym)
         rc = method.call(*args, &block)
         check_for_error(rc, error_class) if rc < below
