@@ -723,7 +723,7 @@ PN_EXTERN pn_data_t *pn_message_body(pn_message_t *msg);
 PN_EXTERN int pn_message_decode(pn_message_t *msg, const char *bytes, size_t size);
 
 /**
- * Encode/save message content as AMQP formatted binary data.
+ * Encode a message as AMQP formatted binary data.
  *
  * If the buffer space provided is insufficient to store the content
  * held in the message, the operation will fail and return a
@@ -736,6 +736,22 @@ PN_EXTERN int pn_message_decode(pn_message_t *msg, const char *bytes, size_t siz
  * @return zero on success or an error code on failure
  */
 PN_EXTERN int pn_message_encode(pn_message_t *msg, char *bytes, size_t *size);
+
+struct pn_link_t;
+
+/**
+ * Encode and send a message on a sender link.
+ *
+ * @param[in] msg A message object.
+ * @param[in] sender A sending link, the message will be encoded and sent with pn_link_send(sender...)
+ * @param[inout] buffer Used to encode the message.
+ * If buffer == NULL, temporary space for encoding will be allocated/freed with malloc()/free()
+ * Otherwise the space indicated by buffer will be used to encode the message.
+ * If buffer is not large enough, it will be extended with realloc()
+ * @return The number of bytes sent on success, an error code (< 0) on failure.
+ * pn_message_error(msg) will have further error information.
+ */
+PN_EXTERN ssize_t pn_message_send(pn_message_t *msg, pn_link_t *sender, pn_rwbytes_t *buffer);
 
 /**
  * Save message content into a pn_data_t object data. The data object will first be cleared.
