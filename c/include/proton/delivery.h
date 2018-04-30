@@ -303,9 +303,10 @@ PN_EXTERN void pn_delivery_settle(pn_delivery_t *delivery);
 PN_EXTERN void pn_delivery_dump(pn_delivery_t *delivery);
 
 /**
- * Check if a delivery is buffered.
+ * Check if a sending delivery is buffered by proton.
  *
- * A delivery that is buffered has not yet been written to the wire.
+ * True means there is data from pn_link_send() buffered for the delivery,
+ * waiting to be transmitted on the network.
  *
  * Note that returning false does not imply that a delivery was
  * definitely written to the wire. If false is returned, it is not
@@ -315,6 +316,12 @@ PN_EXTERN void pn_delivery_dump(pn_delivery_t *delivery);
  * @return true if the delivery is buffered
  */
 PN_EXTERN bool pn_delivery_buffered(pn_delivery_t *delivery);
+
+/**
+ * Get the size in bytes of data buffered in memory for a sending or receiving
+ * delivery.
+ */
+PN_EXTERN bool pn_delivery_buffer_size(pn_delivery_t *delivery);
 
 /**
  * Extracts the first delivery on the connection that has pending

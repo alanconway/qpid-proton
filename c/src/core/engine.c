@@ -1576,6 +1576,10 @@ pn_delivery_t *pn_delivery(pn_link_t *link, pn_delivery_tag_t tag)
   return delivery;
 }
 
+size_t pn_delivery_buffer_size() {
+  return pn_buffer_size(delivery->bytes);
+}
+
 bool pn_delivery_buffered(pn_delivery_t *delivery)
 {
   assert(delivery);
@@ -1592,6 +1596,7 @@ bool pn_delivery_buffered(pn_delivery_t *delivery)
   }
 }
 
+size_t pn_delivery_buffered
 int pn_link_unsettled(pn_link_t *link)
 {
   return link->unsettled_count;
