@@ -126,7 +126,7 @@ module Qpid::Proton
         opts[:user] ||= url.user
         opts[:password] ||= url.password
       end
-      opts[:ssl_domain] ||= SSLDomain.new(SSLDomain::MODE_CLIENT) if url.scheme == "amqps"
+      opts[:ssl_domain] ||= SSLDomain.new if url.scheme == "amqps"
       connect_io(TCPSocket.new(url.host, url.port), opts)
     end
 

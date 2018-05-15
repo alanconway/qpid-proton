@@ -345,6 +345,8 @@ module Qpid::Proton
     # @return [SSL] The SSL object.
     #
     def ssl(domain = nil, session_details = nil)
+      # domain may a hash of optios rather than an SSLDomain object.
+      domain = SSLDomain.new(domain) if domain && !domain.is_a?(SSLDomain)
       @ssl ||= SSL.create(self, domain, session_details)
     end
 

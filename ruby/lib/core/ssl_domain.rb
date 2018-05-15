@@ -45,12 +45,59 @@ module Qpid::Proton
     # @private
     attr_reader :impl
 
-    # @private
-    def initialize(mode)
-      @impl = Cproton.pn_ssl_domain(mode)
-      raise Qpid::Proton::SSLError, "SSL Unavailable" if @impl.nil?
+    # Create an SSL domain
+    #
+    # @option opts [Boolean] :server (false) True for a server-side connection
+    #
+    # @option opts [String] :cert_file File name containing the identify
+    #   certificate. For OpenSSL users, this is a PEM file. For Windows SChannel
+    #   users, this is the PKCS\#12 file or system store.
+    #
+    # @option opts [String] :key_file File name containing the key to
+    #   access the +:cert_file+ certificate. For OpenSSL users, this is an
+    #   optional PEM file containing the private key used to sign the
+    #   certificate. For Windows SChannel users, this is the friendly name of
+    #   the self-identifying certficate if there are multiple certfificates in
+    #   the store.
+    #
+    # @option opts [String] :password Password used to sign the +:key_file+
+    #
+    # @option opts [String] :certificate_db Path to a database of trusted
+    #   CAs used to authenticate the peer.
+    #
+    # @option opts [:certificate, :name] (none) :verify_peer
+    #   The level of verification to apply to the peer
+    #   - :certificate - Require the peer to provide a valid identifying certificate.
+    #   - :name - Require a valid certficate and matching name.
+    #
+    # @option opts [String] :client_ca_db The path to a database of trusted CAs
+    #   that the server will advertise to the peer client if the server has been
+    #   configured to verify its peer.
+    #
+    # @option opts [Boolean] :allow_unsecured_client (false)
+    #   Permit a server to accept connection requests from non-SSL clients.
+    #   The  server checks the incomfing client data stream and to determine
+    #   if SSL/TLS is being used.
+    #   By default only clients using SSL/TLS are accepted.
+    #
+    def initialize(opts=nil)
+      # Backward compatibility, previously was initialize(mode)
+      case opts
+      when MODE_SERVER then opts = { :server => true }
+      when MODE_CLIENT, nil then opts = {}
+      end
+      @impl = Cproton.pn_ssl_domain(opts[:server] ? MODE_SERVER : MODE_CLIENT)
+      raise SSLError, "SSL Unavailable" if @impl.nil?
+      credentials(opts[:cert_file], opts[:key_file], opts[:password]) if opts[:cert_file]
+      trusted_ca_db(opts[:certificate_db]) if opts[:certificate_db]
+      case opts[:very_peer]
+      when :certificate then peer_authentication(VERIFY_PEER)
+      when :name then peer_authentication(VERIFY_PEER_NAME)
+      when nil then ;
+      else raise SSLError, "invalid :verify_peer #{opts[:verify_peer].inspect}"
+      end
+      allow_unsecured_client if opts[:allow_unsecured_client]
     end
-
     # Set the certificate that identifies the local node to the remote.
     #
     # This certificate establishes the identity for thelocal node for all SSL
@@ -118,7 +165,7 @@ module Qpid::Proton
     # the domain's previous setting.
     #
     # @param verify_mode [Integer] The level of validation to apply to the peer.
-    # @param trusted_CAs [String] The path to a database of trusted CAs that
+    # @param client_ca_db [String] The path to a database of trusted CAs that
     #   the server will advertise to the peer client if the server has been
     #   configured to verify its peer.
     #
@@ -129,8 +176,7 @@ module Qpid::Proton
     # @raise [SSLError] If an error occurs.
     #
     def peer_authentication(verify_mode, trusted_CAs = nil)
-      Cproton.pn_ssl_domain_set_peer_authentication(@impl,
-                                                    verify_mode, trusted_CAs)
+      Cproton.pn_ssl_domain_set_peer_authentication(@impl, verify_mode, client_ca_db)
     end
 
     # Permit a server to accept connection requests from non-SSL clients.

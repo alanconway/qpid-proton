@@ -131,18 +131,16 @@ class Broker < Qpid::Proton::Listener::Handler
   end
 
   def ssl_setup
-    # Optional SSL setup
-    ssl = Qpid::Proton::SSLDomain.new(Qpid::Proton::SSLDomain::MODE_SERVER)
-    cert_passsword = "tserverpw"
+    # Optional SSL setup - allows unsecured clients.
+    opts = {:server => true, :password => "tserverpw", :allow_unsecured_client => true}
     if Gem.win_platform?       # Use P12 certs for windows schannel
-      ssl.credentials("ssl-certs/tserver-certificate.p12", "", cert_passsword)
+      opts[:cert_file] = "ssl-certs/tserver-certificate.p12"
     else
-      ssl.credentials("ssl-certs/tserver-certificate.pem", "ssl-certs/tserver-private-key.pem", cert_passsword)
+      opts[:cert_file] = "ssl-certs/tserver-certificate.pem"
+      opts[:key_file] = "ssl-certs/tserver-private-key.pem"
     end
-    ssl.allow_unsecured_client # SSL is optional, this is not secure.
-    @connection_options[:ssl_domain] = ssl if ssl
-  rescue
-    # Don't worry if we can't set up SSL.
+    # Don't worry if SSL is not supported
+    @connection_options[:ssl_domain] = SSLDomain.new(opts) rescue nil
   end
 
   def on_open(l)
