@@ -54,8 +54,7 @@ if(HAS_PROACTOR)
   pn_add_c_test (c-proactor-tests proactor.c)
   target_link_libraries (c-proactor-tests qpid-proton-proactor)
 
-  # TODO Enable by default when races are cleared up
-  option(THRADERCISER "Run the threaderciser concurrency tests" OFF)
+  option(THRADERCISER "Run the threaderciser concurrency tests" ON)
   if (THREADERCISER)
     pn_build_c_test(c-threaderciser threaderciser.c)
     target_link_libraries (c-threaderciser pthread qpid-proton-proactor)
