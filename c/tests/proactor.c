@@ -102,18 +102,25 @@ static pn_event_type_t test_proactors_get(test_proactor_t *tps, size_t n) {
   }
 }
 
-/* Run an array of proactors till a handler returns an event. */
+/* Run an array of proactors till a handler returns an event,
+ * or all handlers return NONE twice, which means nothing more can happen.
+ */
 static pn_event_type_t test_proactors_run(test_proactor_t *tps, size_t n) {
   pn_event_type_t e;
-  while ((e = test_proactors_get(tps, n)) == PN_EVENT_NONE)
+  while (((e = test_proactors_get(tps, n)) == PN_EVENT_NONE) &&
+         ((e = test_proactors_get(tps, n)) == PN_EVENT_NONE))
          ;
   return e;
 }
 
-/* Run an array of proactors till a handler returns the desired event. */
+/* Run an array of proactors till a handler returns the desired event,
+ * or all handlers return NONE twice, which means nothing more can happen.
+ */
 void test_proactors_run_until(test_proactor_t *tps, size_t n, pn_event_type_t want) {
-  while (test_proactors_get(tps, n) != want)
-         ;
+  pn_event_type_t e = test_proactors_run(tps, n);
+  while (e != want && e != PN_EVENT_NONE) {
+    e = test_proactors_run(tps, n);
+  }
 }
 
 /* Drain and discard outstanding events from an array of proactors */
