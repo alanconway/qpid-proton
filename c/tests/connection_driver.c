@@ -536,8 +536,7 @@ int main(int argc, char **argv) {
   RUN_ARGV_TEST(failed, t, test_message_abort_mixed(&t));
   RUN_ARGV_TEST(failed, t, test_session_flow_control(&t));
   RUN_ARGV_TEST(failed, t, test_duplicate_link_server(&t));
-  fprintf(stderr, "\n==== Following tests are expected to fail ====\n");
-  int ignore = 0;               /* run but don't fail the build */
-  RUN_ARGV_TEST(ignore, t, test_duplicate_link_client(&t));
+  /* This test will fail till https://issues.apache.org/jira/browse/PROTON-1837 is fixed  */
+  (void)test_duplicate_link_client;
   return failed;
 }

@@ -74,18 +74,21 @@ static void save_condition(pn_event_t *e) {
   }
 }
 
-/* Process events on a proactor array until a handler returns an event, or
- * all proactors return NULL
+/* Use to represent idle since the proactor never returns it */
+#define IDLE PN_REACTOR_QUIESCED
+
+/* Process events on a proactor array until a handler returns an event,
+   or all proactors are idle. Return event or IDLE.
  */
 static pn_event_type_t test_proactors_get(test_proactor_t *tps, size_t n) {
   if (last_condition) pn_condition_clear(last_condition);
-  while (true) {
+  pn_event_type_t ret = PN_EVENT_NONE;
+  while (!ret) {
     bool busy = false;
     for (test_proactor_t *tp = tps; tp < tps + n; ++tp) {
       pn_event_batch_t *eb =  pn_proactor_get(tp->proactor);
       if (eb) {
         busy = true;
-        pn_event_type_t ret = PN_EVENT_NONE;
         for (pn_event_t* e = pn_event_batch_next(eb); e; e = pn_event_batch_next(eb)) {
           test_handler_log(&tp->handler, e);
           save_condition(e);
@@ -93,39 +96,50 @@ static pn_event_type_t test_proactors_get(test_proactor_t *tps, size_t n) {
           if (ret) break;
         }
         pn_proactor_done(tp->proactor, eb);
-        if (ret) return ret;
+        if (ret) break;
       }
     }
-    if (!busy) {
-      return PN_EVENT_NONE;
-    }
+    if (!ret && !busy) ret = IDLE;
   }
+  return ret;
 }
 
-/* Run an array of proactors till a handler returns an event. */
+/* Run an array of proactors till a handler returns an event or all proctors are IDLE */
 static pn_event_type_t test_proactors_run(test_proactor_t *tps, size_t n) {
-  pn_event_type_t e;
-  while ((e = test_proactors_get(tps, n)) == PN_EVENT_NONE)
-         ;
+  /* Need to get 2 IDLES in a row to be sure all IO events are processed */
+  pn_event_type_t e = PN_EVENT_NONE;
+  size_t idle = 0;
+  while  (!e) {
+    e = test_proactors_get(tps, n);
+    if (e == IDLE && idle < 2) {
+      ++idle;
+      e = PN_EVENT_NONE;        /* Wait for more IDLE */
+    } else {
+      idle = false;             /* Non-consecutive doesn't count */
+    }
+  }
   return e;
 }
 
-/* Run an array of proactors till a handler returns the desired event. */
-void test_proactors_run_until(test_proactor_t *tps, size_t n, pn_event_type_t want) {
-  while (test_proactors_get(tps, n) != want)
-         ;
+/* Run an array of proactors till a handler returns the desired event or IDLE.  */
+static pn_event_type_t test_proactors_run_until(test_proactor_t *tps, size_t n, pn_event_type_t want) {
+  pn_event_type_t e = test_proactors_get(tps, n);
+  while  (e != want && e != IDLE) {
+    e = test_proactors_get(tps, n);
+  }
+  return e;
 }
 
 /* Drain and discard outstanding events from an array of proactors */
 static void test_proactors_drain(test_proactor_t *tps, size_t n) {
-  while (test_proactors_get(tps, n))
-         ;
+  test_proactors_run_until(tps, n, IDLE);
 }
 
 
 #define TEST_PROACTORS_GET(A) test_proactors_get((A), ARRAYLEN(A))
 #define TEST_PROACTORS_RUN(A) test_proactors_run((A), ARRAYLEN(A))
-#define TEST_PROACTORS_RUN_UNTIL(A, WANT) test_proactors_run_until((A), ARRAYLEN(A), WANT)
+#define TEST_PROACTORS_RUN_UNTIL(A, WANT) \
+  TEST_ETYPE_EQUAL((A)->handler.t, (WANT), test_proactors_run_until((A), ARRAYLEN(A), WANT))
 #define TEST_PROACTORS_DRAIN(A) test_proactors_drain((A), ARRAYLEN(A))
 
 #define TEST_PROACTORS_DESTROY(A) do {           \
@@ -336,7 +350,7 @@ static void test_connection_wake(test_t *t) {
   TEST_ETYPE_EQUAL(t, PN_TRANSPORT_CLOSED, TEST_PROACTORS_RUN(tps)); /* Both ends */
   /* The pn_connection_t is still valid so wake is legal but a no-op */
   TEST_ETYPE_EQUAL(t, PN_PROACTOR_INACTIVE, TEST_PROACTORS_RUN(tps));
-  TEST_ETYPE_EQUAL(t, PN_EVENT_NONE, TEST_PROACTORS_GET(tps)); /* No more wake */
+  TEST_ETYPE_EQUAL(t, IDLE, TEST_PROACTORS_GET(tps)); /* No more wake */
 
   /* Verify we don't get a wake after close even if they happen together */
   pn_connection_t *c2 = pn_connection();
@@ -348,7 +362,7 @@ static void test_connection_wake(test_t *t) {
 
   TEST_ETYPE_EQUAL(t, PN_TRANSPORT_CLOSED, test_proactors_run(&tps[0], 1));
   TEST_ETYPE_EQUAL(t, PN_PROACTOR_INACTIVE, test_proactors_run(&tps[0], 1));
-  TEST_ETYPE_EQUAL(t, PN_EVENT_NONE, test_proactors_get(&tps[0], 1)); /* No late wake */
+  TEST_ETYPE_EQUAL(t, IDLE, test_proactors_get(&tps[0], 1)); /* No late wake */
 
   TEST_PROACTORS_DESTROY(tps);
   /* The pn_connection_t is still valid so wake is legal but a no-op */
