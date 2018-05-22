@@ -380,7 +380,11 @@ struct pn_proactor_t {
   pmutex overflow_mutex;
 };
 
-static void rearm(pn_proactor_t *p, epoll_extended_t *ee);
+static void rearm(pn_proactor_t *p, epoll_extended_t *ee) {
+  if (pni_epoll_arm(p->pni_epoll, &ee->ed)) {
+    EPOLL_FATAL("re-arming polled file descriptor", errno);
+  }
+}
 
 /*
  * Wake strategy with eventfd.
@@ -494,7 +498,6 @@ typedef struct pconnection_t {
   struct pn_netaddr_t local, remote; /* Actual addresses */
   struct addrinfo *addrinfo;         /* Resolved address list */
   struct addrinfo *ai;               /* Current connect address */
-  pmutex rearm_mutex;                /* protects pconnection_rearm from out of order arming*/
 } pconnection_t;
 
 /* Protects read/update of pn_connnection_t pointer to it's pconnection_t
@@ -555,8 +558,6 @@ struct pn_listener_t {
   bool unclaimed;                 /* attach event dispatched but no pn_listener_attach() call yet */
   size_t backlog;
   bool close_dispatched;
-  /* FIXME aconway 2018-05-17: may not be needed now */
-  pmutex rearm_mutex;             /* orders rearms/disarms, nothing else */
 };
 
 static pn_event_batch_t *pconnection_process(pconnection_t *pc, uint32_t events, bool timeout, bool topup);
@@ -648,13 +649,6 @@ static void psocket_gai_error(psocket_t *ps, int gai_err, const char* what) {
   psocket_error_str(ps, gai_strerror(gai_err), what);
 }
 
-static void rearm(pn_proactor_t *p, epoll_extended_t *ee) {
-  /* FIXME aconway 2018-05-22: identify rearm vs. update */
-  if (pni_epoll_arm(p->pni_epoll, &ee->ed)) {
-    EPOLL_FATAL("re-arming polled file descriptor", errno);
-  }
-}
-
 static void listener_list_append(acceptor_t **start, acceptor_t *item) {
   assert(item->next == NULL);
   if (*start) {
@@ -702,14 +696,12 @@ static void proactor_rearm_overflow(pn_proactor_t *p) {
     assert(a->overflowed);
     a->overflowed = false;
     if (rearming) {
-      lock(&l->rearm_mutex);
       a->armed = true;
     }
     else notify = wake(&l->context);
     unlock(&l->context.mutex);
     if (rearming) {
       rearm(p, &a->psocket.epoll_io);
-      unlock(&l->rearm_mutex);
     }
     if (notify) wake_notify(&l->context);
     a = listener_list_next(&ovflw);
@@ -764,7 +756,6 @@ static const char *pconnection_setup(pconnection_t *pc, pn_proactor_t *p, pn_con
     psocket_error(&pc->psocket, errno, "timer setup");
     pc->disconnected = true;    /* Already failed */
   }
-  pmutex_init(&pc->rearm_mutex);
 
   /* Set the pconnection_t backpointer last.
      Connections that were released by pn_proactor_release_connection() must not reveal themselves
@@ -788,7 +779,6 @@ static void pconnection_final_free(pconnection_t *pc) {
   if (pc->addrinfo) {
     freeaddrinfo(pc->addrinfo);
   }
-  pmutex_finalize(&pc->rearm_mutex);
   pn_condition_free(pc->disconnect_condition);
   pn_connection_driver_destroy(&pc->driver);
   pcontext_finalize(&pc->context);
@@ -813,8 +803,6 @@ static void pconnection_cleanup(pconnection_t *pc) {
 
 // Call with lock held or from forced_shutdown
 static void pconnection_begin_close(pconnection_t *pc) {
-  lock(&pc->rearm_mutex);
-  unlock(&pc->rearm_mutex);  // Allow parallel pconnection_rearm() to complete
   if (!pc->context.closing) {
     pc->context.closing = true;
     if (pc->current_arm != 0 && !pc->new_events) {
@@ -873,8 +861,8 @@ static inline bool pconnection_wclosed(pconnection_t  *pc) {
 }
 
 /* Call only from working context (no competitor for pc->current_arm or
-   connection driver).  If true returned, caller must do
-   pconnection_rearm().
+   connection driver).  If true, caller should rearm or update the connection.
+
 
    Never rearm(0 | EPOLLONESHOT), since this really means
    rearm(EPOLLHUP | EPOLLERR | EPOLLONESHOT) and leaves doubt that the
@@ -897,17 +885,10 @@ static bool pconnection_rearm_check(pconnection_t *pc) {
   }
   if (!wanted_now || pc->current_arm == wanted_now) return false;
 
-  lock(&pc->rearm_mutex);      /* unlocked in pconnection_rearm... */
   /* FIXME aconway 2018-05-17: do changes to events inside pni_epoll API */
   pc->psocket.epoll_io.ed.events = wanted_now;
   pc->current_arm = wanted_now;
-  return true;                     /* ... so caller MUST call pconnection_rearm */
-}
-
-/* Call without lock */
-static inline void pconnection_rearm(pconnection_t *pc) {
-  rearm(pc->psocket.proactor, &pc->psocket.epoll_io);
-  unlock(&pc->rearm_mutex);
+  return true;
 }
 
 static inline bool pconnection_work_pending(pconnection_t *pc) {
@@ -935,9 +916,9 @@ static void pconnection_done(pconnection_t *pc) {
       return;
     }
   }
-  bool rearm = pconnection_rearm_check(pc);
+  bool rearm_pc = pconnection_rearm_check(pc);
   unlock(&pc->context.mutex);
-  if (rearm) pconnection_rearm(pc);
+  if (rearm_pc) rearm(pc->psocket.proactor, &pc->psocket.epoll_io);
   if (notify) wake_notify(&pc->context);
 }
 
@@ -1154,10 +1135,10 @@ static pn_event_batch_t *pconnection_process(pconnection_t *pc, uint32_t events,
     pc->timer_armed = true;
     rearm(pc->psocket.proactor, &pc->timer.epoll_io);
   }
-  bool rearm_pc = pconnection_rearm_check(pc);  // holds rearm_mutex until pconnection_rearm() below
+  bool rearm_pc = pconnection_rearm_check(pc);
 
   unlock(&pc->context.mutex);
-  if (rearm_pc) pconnection_rearm(pc);
+  if (rearm_pc) rearm(pc->psocket.proactor, &pc->psocket.epoll_io);
   return NULL;
 }
 
@@ -1208,7 +1189,7 @@ static void pconnection_maybe_connect_lh(pconnection_t *pc, bool retry) {
   errno = 0;
   if (retry) { /* This is not the first attempt, stop polling and close the old FD */
     epoll_extended_t *ee = &pc->psocket.epoll_io;
-    int fd = pni_epoll_data_fd(&ee->ed); /* Save fd, it will be set to -1 by stop_polling */
+    int fd = ee->ed.fd;      /* Save fd, it will be set to -1 by stop_polling */
     stop_polling(ee, pc->psocket.proactor->pni_epoll);
     pclosefd(pc->psocket.proactor, fd);
   }
@@ -1363,7 +1344,6 @@ pn_listener_t *pn_listener() {
     }
     pn_proactor_t *unknown = NULL;  // won't know until pn_proactor_listen
     pcontext_init(&l->context, LISTENER, unknown, l);
-    pmutex_init(&l->rearm_mutex);
   }
   return l;
 }
@@ -1420,11 +1400,9 @@ void pn_proactor_listen(pn_proactor_t *p, pn_listener_t *l, const char *addr, in
           psocket_init(ps, p, l, addr);
           ps->sockfd = fd;
           pni_epoll_data_init(&ps->epoll_io.ed, fd, EPOLLIN);
-          lock(&l->rearm_mutex);
           start_polling(&ps->epoll_io, ps->proactor->pni_epoll);  // TODO: check for error
           l->active_count++;
           acceptor->armed = true;
-          unlock(&l->rearm_mutex);
         } else {
           close(fd);
         }
@@ -1463,7 +1441,6 @@ static inline bool listener_can_free(pn_listener_t *l) {
 
 static inline void listener_final_free(pn_listener_t *l) {
   pcontext_finalize(&l->context);
-  pmutex_finalize(&l->rearm_mutex);
   free(l->acceptors);
   free(l);
 }
@@ -1497,7 +1474,6 @@ static void listener_begin_close(pn_listener_t* l) {
       acceptor_t *a = &l->acceptors[i];
       psocket_t *ps = &a->psocket;
       if (ps->sockfd >= 0) {
-        lock(&l->rearm_mutex);
         if (a->armed) {
           shutdown(ps->sockfd, SHUT_RD);  // Force epoll event and callback
         } else {
@@ -1506,7 +1482,6 @@ static void listener_begin_close(pn_listener_t* l) {
           ps->sockfd = -1;
           l->active_count--;
         }
-        unlock(&l->rearm_mutex);
       }
     }
     /* Close all sockets waiting for a pn_listener_accept2() */
@@ -1581,9 +1556,7 @@ static pn_event_batch_t *listener_process(psocket_t *ps, uint32_t events) {
   if (events) {
     a->armed = false;
     if (l->context.closing) {
-      lock(&l->rearm_mutex);
       stop_polling(&ps->epoll_io, ps->proactor->pni_epoll);
-      unlock(&l->rearm_mutex);
       close(ps->sockfd);
       ps->sockfd = -1;
       l->active_count--;
@@ -1693,7 +1666,6 @@ void pn_listener_accept2(pn_listener_t *l, pn_connection_t *c, pn_transport_t *t
     assert(!a->armed);
     fd = a->accepted_fd;
     a->accepted_fd = -1;
-    lock(&l->rearm_mutex);
     rearming_ps = &a->psocket;
     a->armed = true;
   }
@@ -1715,7 +1687,6 @@ void pn_listener_accept2(pn_listener_t *l, pn_connection_t *c, pn_transport_t *t
   unlock(&l->context.mutex);
   if (rearming_ps) {
     rearm(rearming_ps->proactor, &rearming_ps->epoll_io);
-    unlock(&l->rearm_mutex);
   }
   if (notify) wake_notify(&l->context);
 }
@@ -1918,7 +1889,7 @@ static bool proactor_remove(pcontext_t *ctx) {
 }
 
 static pn_event_batch_t *process_inbound_wake(pn_proactor_t *p, epoll_extended_t *ee) {
-  if  (pni_epoll_data_fd(&ee->ed) == p->interruptfd) { /* Interrupts have their own eventfd */
+  if  (ee->ed.fd == p->interruptfd) { /* Interrupts have their own eventfd */
     (void)read_uint64(p->interruptfd);
     rearm(p, &p->epoll_interrupt);
     return proactor_process(p, PN_PROACTOR_INTERRUPT);

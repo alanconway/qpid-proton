@@ -20,22 +20,20 @@
  * under the License.
  */
 
-/* FIXME aconway 2018-05-22: doc simplified arm/update/disarm semantics */
-
 /** @file
  *
- * Thread safe epoll ONESHOT mode.
+ * Simplified wrapper for epoll providing thread-safe, one-shot semantics.
+ * Each FD is represented by a pni_epoll_data_t, 'ed' for short.
  *
- * - an fd  is *armed* if it is enabled for events in epoll.
- * - an fd  returned by pni_epoll_wait() is *disarmed*, it will not be returned by
- *   pni_epoll_wait() again until after a call to pni_epoll_arm()
- * - pn_epoll_update() changes event flags for an *armed* fd, it is a no-op on an unarmed fd
+ * - an ed is either *armed* or *disarmed*. An armed ed may be returned by pni_epoll_wait.
+ * - an ed returned by pni_epoll_wait() is *disarmed* until a call to pni_epoll_arm()
+ * - pn_epoll_update() updates the events for an *armed* fd, it is a no-op on an unarmed fd.
  *
- * NOTE: This is what epoll ONESHOT is intended for, but it is not thread safe
- * if the event status of an fd is modified concurrent with epoll_wait()
- * returning that fd. epoll can't tell the difference between the processing
- * thread "re-arming" an fd and some other thread "updating" the event
- * status. This API distinguishes between pni_epoll_arm() and pni_epoll_udate()
+ * NOTE: EPOLLONESHOT is not thread safe if the events associated withan fd can
+ * be modified concurrently with epoll_wait() returning that fd. Epoll can't
+ * tell the difference between the processing thread "re-arming" an fd and some
+ * other thread "updating" the event status. This API distinguishes between
+ * pni_epoll_arm() and pni_epoll_udate()
  *
  */
 
@@ -46,14 +44,10 @@ typedef struct pni_epoll_t pni_epoll_t;
 
 /* Struct to register with each epoll fd */
 typedef struct pni_epoll_data_t {
-  /* FIXME aconway 2018-05-17: refactor better with epoll.c */
-  /* FIXME aconway 2018-05-17: embed in pocket */
   int fd;
   uint32_t events;              /* events enabled when armed */
   bool armed:1;
 } pni_epoll_data_t;
-
-static inline int pni_epoll_data_fd(pni_epoll_data_t *ed) { return ed->fd; }
 
 void pni_epoll_data_init(pni_epoll_data_t *ed, int fd, uint32_t events);
 
