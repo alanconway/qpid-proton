@@ -1005,7 +1005,7 @@ static void write_flush(pconnection_t *pc) {
 }
 
 static void pconnection_connected_lh(pconnection_t *pc);
-static void pconnection_maybe_connect_lh(pconnection_t *pc);
+static void pconnection_maybe_connect_lh(pconnection_t *pc, bool retry);
 
 /*
  * May be called concurrently from multiple threads:
@@ -1092,7 +1092,7 @@ static pn_event_batch_t *pconnection_process(pconnection_t *pc, uint32_t events,
     pc->current_arm = 0;
     if (!pc->context.closing) {
       if ((pc->new_events & (EPOLLHUP | EPOLLERR)) && !pconnection_rclosed(pc) && !pconnection_wclosed(pc))
-        pconnection_maybe_connect_lh(pc);
+        pconnection_maybe_connect_lh(pc, true);
       else
         pconnection_connected_lh(pc); /* Non error event means we are connected */
       if (pc->new_events & EPOLLOUT)
@@ -1216,7 +1216,9 @@ void pconnection_connected_lh(pconnection_t *pc) {
   }
 }
 
-/* multi-address connections may call pconnection_start multiple times with diffferent FDs  */
+/* multi-address connections may call pconnection_start multiple times with diffferent FDs,
+ * retry is 0 on the first  call and counts the calls thereafter.
+ */
 static void pconnection_start(pconnection_t *pc) {
   int efd = pc->psocket.proactor->epollfd;
   /* Start timer, a no-op if the timer has already started. */
@@ -1227,19 +1229,22 @@ static void pconnection_start(pconnection_t *pc) {
   (void)getsockname(pc->psocket.sockfd, (struct sockaddr*)&pc->local.ss, &len);
 
   epoll_extended_t *ee = &pc->psocket.epoll_io;
-  if (ee->polling) {     /* This is not the first attempt, stop polling and close the old FD */
-    int fd = ee->fd;     /* Save fd, it will be set to -1 by stop_polling */
-    stop_polling(ee, efd);
-    pclosefd(pc->psocket.proactor, fd);
-  }
   ee->fd = pc->psocket.sockfd;
   pc->current_arm = ee->wanted = EPOLLIN | EPOLLOUT;
   start_polling(ee, efd);  // TODO: check for error
 }
 
-/* Called on initial connect, and if connection fails to try another address */
-static void pconnection_maybe_connect_lh(pconnection_t *pc) {
+/* Called on initial connect, and if connection fails to try another address
+ * retry==true if this is not the first attempt to make the connection */
+static void pconnection_maybe_connect_lh(pconnection_t *pc, bool retry) {
   errno = 0;
+  if (retry) { /* This is not the first attempt, stop polling and close the old FD */
+    int efd = pc->psocket.proactor->epollfd;
+    epoll_extended_t *ee = &pc->psocket.epoll_io;
+    int fd = ee->fd;         /* Save fd, it will be set to -1 by stop_polling */
+    stop_polling(ee, efd);
+    pclosefd(pc->psocket.proactor, fd);
+  }
   if (!pc->connected) {         /* Not yet connected */
     while (pc->ai) {            /* Have an address */
       struct addrinfo *ai = pc->ai;
@@ -1314,7 +1319,7 @@ void pn_proactor_connect2(pn_proactor_t *p, pn_connection_t *c, pn_transport_t *
     if (!gai_error) {
       pn_connection_open(pc->driver.connection); /* Auto-open */
       pc->ai = pc->addrinfo;
-      pconnection_maybe_connect_lh(pc); /* Start connection attempts */
+      pconnection_maybe_connect_lh(pc, false); /* Start connection attempts */
       if (pc->disconnected) notify = wake(&pc->context);
     } else {
       psocket_gai_error(&pc->psocket, gai_error, "connect to ");
