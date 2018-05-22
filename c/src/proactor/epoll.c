@@ -28,6 +28,7 @@
 
 #include "../core/log_private.h"
 #include "./proactor-internal.h"
+#include "./pni_epoll.h"
 
 #include <proton/condition.h>
 #include <proton/connection_driver.h>
@@ -45,7 +46,6 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/timerfd.h>
-#include <sys/epoll.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -123,24 +123,10 @@ typedef enum {
 
 // Data to use with epoll.
 typedef struct epoll_extended_t {
+  pni_epoll_data_t ed;          /* Must be first field */
   struct psocket_t *psocket;  // pconnection, listener, or NULL -> proactor
-  int fd;
   epoll_type_t type;   // io/timer/wakeup
-  uint32_t wanted;     // events to poll for
-  bool polling;
-  pmutex barrier_mutex;
 } epoll_extended_t;
-
-/* epoll_ctl()/epoll_wait() do not form a memory barrier, so cached memory
-   writes to struct epoll_extended_t in the EPOLL_ADD thread might not be
-   visible to epoll_wait() thread. This function creates a memory barrier,
-   called before epoll_ctl() and after epoll_wait()
-*/
-static void memory_barrier(epoll_extended_t *ee) {
-  // Mutex lock/unlock has the side-effect of being a memory barrier.
-  lock(&ee->barrier_mutex);
-  unlock(&ee->barrier_mutex);
-}
 
 /*
  * This timerfd logic assumes EPOLLONESHOT and there never being two
@@ -178,10 +164,8 @@ static bool ptimer_init(ptimer_t *pt, struct psocket_t *ps) {
   pt->shutting_down = false;
   epoll_type_t type = ps ? PCONNECTION_TIMER : PROACTOR_TIMER;
   pt->epoll_io.psocket = ps;
-  pt->epoll_io.fd = pt->timerfd;
+  pni_epoll_data_init(&pt->epoll_io.ed, pt->timerfd, EPOLLIN);
   pt->epoll_io.type = type;
-  pt->epoll_io.wanted = EPOLLIN;
-  pt->epoll_io.polling = false;
   return (pt->timerfd >= 0);
 }
 
@@ -286,29 +270,14 @@ const char *AMQP_PORT_NAME = "amqp";
 PN_STRUCT_CLASSDEF(pn_proactor, CID_pn_proactor)
 PN_STRUCT_CLASSDEF(pn_listener, CID_pn_listener)
 
-static bool start_polling(epoll_extended_t *ee, int epollfd) {
-  if (ee->polling)
-    return false;
-  ee->polling = true;
-  struct epoll_event ev;
-  ev.data.ptr = ee;
-  ev.events = ee->wanted | EPOLLONESHOT;
-  memory_barrier(ee);
-  return (epoll_ctl(epollfd, EPOLL_CTL_ADD, ee->fd, &ev) == 0);
+static void start_polling(epoll_extended_t *ee, pni_epoll_t *ep) {
+  if (pni_epoll_arm(ep, &ee->ed)) {
+    EPOLL_FATAL("adding polled file descriptor", errno);
+  }
 }
 
-static void stop_polling(epoll_extended_t *ee, int epollfd) {
-  // TODO: check for error, return bool or just log?
-  if (ee->fd == -1 || !ee->polling || epollfd == -1)
-    return;
-  struct epoll_event ev;
-  ev.data.ptr = ee;
-  ev.events = 0;
-  memory_barrier(ee);
-  if (epoll_ctl(epollfd, EPOLL_CTL_DEL, ee->fd, &ev) == -1)
-    EPOLL_FATAL("EPOLL_CTL_DEL", errno);
-  ee->fd = -1;
-  ee->polling = false;
+static void stop_polling(epoll_extended_t *ee, pni_epoll_t *ep) {
+  pni_epoll_disarm(ep, &ee->ed);
 }
 
 /*
@@ -382,7 +351,7 @@ typedef struct psocket_t {
 
 struct pn_proactor_t {
   pcontext_t context;
-  int epollfd;
+  pni_epoll_t *pni_epoll;
   ptimer_t timer;
   pn_collector_t *collector;
   pcontext_t *contexts;         /* in-use contexts for PN_PROACTOR_INACTIVE and cleanup */
@@ -455,7 +424,7 @@ static inline void wake_notify(pcontext_t *ctx) {
   if (ctx->proactor->eventfd == -1)
     return;
   uint64_t increment = 1;
-  if (write(ctx->proactor->eventfd, &increment, sizeof(uint64_t)) != sizeof(uint64_t))
+   if (write(ctx->proactor->eventfd, &increment, sizeof(uint64_t)) != sizeof(uint64_t))
     EPOLL_FATAL("setting eventfd", errno);
 }
 
@@ -494,10 +463,8 @@ static inline void wake_done(pcontext_t *ctx) {
 static void psocket_init(psocket_t* ps, pn_proactor_t* p, pn_listener_t *listener, const char *addr)
 {
   ps->epoll_io.psocket = ps;
-  ps->epoll_io.fd = -1;
+  pni_epoll_data_init(&ps->epoll_io.ed, -1, 0);
   ps->epoll_io.type = listener ? LISTENER_IO : PCONNECTION_IO;
-  ps->epoll_io.wanted = 0;
-  ps->epoll_io.polling = false;
   ps->proactor = p;
   ps->listener = listener;
   ps->sockfd = -1;
@@ -588,6 +555,7 @@ struct pn_listener_t {
   bool unclaimed;                 /* attach event dispatched but no pn_listener_attach() call yet */
   size_t backlog;
   bool close_dispatched;
+  /* FIXME aconway 2018-05-17: may not be needed now */
   pmutex rearm_mutex;             /* orders rearms/disarms, nothing else */
 };
 
@@ -681,12 +649,10 @@ static void psocket_gai_error(psocket_t *ps, int gai_err, const char* what) {
 }
 
 static void rearm(pn_proactor_t *p, epoll_extended_t *ee) {
-  struct epoll_event ev;
-  ev.data.ptr = ee;
-  ev.events = ee->wanted | EPOLLONESHOT;
-  memory_barrier(ee);
-  if (epoll_ctl(p->epollfd, EPOLL_CTL_MOD, ee->fd, &ev) == -1)
-    EPOLL_FATAL("arming polled file descriptor", errno);
+  /* FIXME aconway 2018-05-22: identify rearm vs. update */
+  if (pni_epoll_arm(p->pni_epoll, &ee->ed)) {
+    EPOLL_FATAL("re-arming polled file descriptor", errno);
+  }
 }
 
 static void listener_list_append(acceptor_t **start, acceptor_t *item) {
@@ -803,7 +769,7 @@ static const char *pconnection_setup(pconnection_t *pc, pn_proactor_t *p, pn_con
   /* Set the pconnection_t backpointer last.
      Connections that were released by pn_proactor_release_connection() must not reveal themselves
      to be re-associated with a proactor till setup is complete.
-   */
+  */
   set_pconnection(pc->driver.connection, pc);
 
   return NULL;
@@ -831,10 +797,11 @@ static void pconnection_final_free(pconnection_t *pc) {
 
 // call without lock, but only if pconnection_is_final() is true
 static void pconnection_cleanup(pconnection_t *pc) {
-  stop_polling(&pc->psocket.epoll_io, pc->psocket.proactor->epollfd);
+  pni_epoll_t *ep = pc->psocket.proactor->pni_epoll;
+  stop_polling(&pc->psocket.epoll_io, ep);
   if (pc->psocket.sockfd != -1)
     pclosefd(pc->psocket.proactor, pc->psocket.sockfd);
-  stop_polling(&pc->timer.epoll_io, pc->psocket.proactor->epollfd);
+  stop_polling(&pc->timer.epoll_io, ep);
   ptimer_finalize(&pc->timer);
   lock(&pc->context.mutex);
   bool can_free = proactor_remove(&pc->context);
@@ -931,7 +898,8 @@ static bool pconnection_rearm_check(pconnection_t *pc) {
   if (!wanted_now || pc->current_arm == wanted_now) return false;
 
   lock(&pc->rearm_mutex);      /* unlocked in pconnection_rearm... */
-  pc->psocket.epoll_io.wanted = wanted_now;
+  /* FIXME aconway 2018-05-17: do changes to events inside pni_epoll API */
+  pc->psocket.epoll_io.ed.events = wanted_now;
   pc->current_arm = wanted_now;
   return true;                     /* ... so caller MUST call pconnection_rearm */
 }
@@ -1220,18 +1188,18 @@ void pconnection_connected_lh(pconnection_t *pc) {
  * retry is 0 on the first  call and counts the calls thereafter.
  */
 static void pconnection_start(pconnection_t *pc) {
-  int efd = pc->psocket.proactor->epollfd;
+  pni_epoll_t *ep = pc->psocket.proactor->pni_epoll;
   /* Start timer, a no-op if the timer has already started. */
-  start_polling(&pc->timer.epoll_io, efd);  // TODO: check for error
+  start_polling(&pc->timer.epoll_io, ep);  // TODO: check for error
 
   /* Get the local socket name now, get the peer name in pconnection_connected */
   socklen_t len = sizeof(pc->local.ss);
   (void)getsockname(pc->psocket.sockfd, (struct sockaddr*)&pc->local.ss, &len);
 
   epoll_extended_t *ee = &pc->psocket.epoll_io;
-  ee->fd = pc->psocket.sockfd;
-  pc->current_arm = ee->wanted = EPOLLIN | EPOLLOUT;
-  start_polling(ee, efd);  // TODO: check for error
+  pc->current_arm = EPOLLIN | EPOLLOUT;
+  pni_epoll_data_init(&ee->ed, pc->psocket.sockfd, pc->current_arm);
+  start_polling(ee, ep);  // TODO: check for error
 }
 
 /* Called on initial connect, and if connection fails to try another address
@@ -1239,10 +1207,9 @@ static void pconnection_start(pconnection_t *pc) {
 static void pconnection_maybe_connect_lh(pconnection_t *pc, bool retry) {
   errno = 0;
   if (retry) { /* This is not the first attempt, stop polling and close the old FD */
-    int efd = pc->psocket.proactor->epollfd;
     epoll_extended_t *ee = &pc->psocket.epoll_io;
-    int fd = ee->fd;         /* Save fd, it will be set to -1 by stop_polling */
-    stop_polling(ee, efd);
+    int fd = pni_epoll_data_fd(&ee->ed); /* Save fd, it will be set to -1 by stop_polling */
+    stop_polling(ee, pc->psocket.proactor->pni_epoll);
     pclosefd(pc->psocket.proactor, fd);
   }
   if (!pc->connected) {         /* Not yet connected */
@@ -1452,11 +1419,9 @@ void pn_proactor_listen(pn_proactor_t *p, pn_listener_t *l, const char *addr, in
           psocket_t *ps = &acceptor->psocket;
           psocket_init(ps, p, l, addr);
           ps->sockfd = fd;
-          ps->epoll_io.fd = fd;
-          ps->epoll_io.wanted = EPOLLIN;
-          ps->epoll_io.polling = false;
+          pni_epoll_data_init(&ps->epoll_io.ed, fd, EPOLLIN);
           lock(&l->rearm_mutex);
-          start_polling(&ps->epoll_io, ps->proactor->epollfd);  // TODO: check for error
+          start_polling(&ps->epoll_io, ps->proactor->pni_epoll);  // TODO: check for error
           l->active_count++;
           acceptor->armed = true;
           unlock(&l->rearm_mutex);
@@ -1536,7 +1501,7 @@ static void listener_begin_close(pn_listener_t* l) {
         if (a->armed) {
           shutdown(ps->sockfd, SHUT_RD);  // Force epoll event and callback
         } else {
-          stop_polling(&ps->epoll_io, ps->proactor->epollfd);
+          stop_polling(&ps->epoll_io, ps->proactor->pni_epoll);
           close(ps->sockfd);
           ps->sockfd = -1;
           l->active_count--;
@@ -1617,7 +1582,7 @@ static pn_event_batch_t *listener_process(psocket_t *ps, uint32_t events) {
     a->armed = false;
     if (l->context.closing) {
       lock(&l->rearm_mutex);
-      stop_polling(&ps->epoll_io, ps->proactor->epollfd);
+      stop_polling(&ps->epoll_io, ps->proactor->pni_epoll);
       unlock(&l->rearm_mutex);
       close(ps->sockfd);
       ps->sockfd = -1;
@@ -1761,39 +1726,37 @@ void pn_listener_accept2(pn_listener_t *l, pn_connection_t *c, pn_transport_t *t
 // ========================================================================
 
 /* Set up an epoll_extended_t to be used for wakeup or interrupts */
-static void epoll_wake_init(epoll_extended_t *ee, int eventfd, int epollfd) {
+static void epoll_wake_init(epoll_extended_t *ee, int eventfd, pni_epoll_t *ep) {
   ee->psocket = NULL;
-  ee->fd = eventfd;
+  pni_epoll_data_init(&ee->ed, eventfd, EPOLLIN);
   ee->type = WAKE;
-  ee->wanted = EPOLLIN;
-  ee->polling = false;
-  start_polling(ee, epollfd);  // TODO: check for error
+  start_polling(ee, ep);  // TODO: check for error
 }
 
 pn_proactor_t *pn_proactor() {
   pn_proactor_t *p = (pn_proactor_t*)calloc(1, sizeof(*p));
   if (!p) return NULL;
-  p->epollfd = p->eventfd = p->timer.timerfd = -1;
+  p->eventfd = p->timer.timerfd = -1;
   pcontext_init(&p->context, PROACTOR, p, p);
   pmutex_init(&p->eventfd_mutex);
   ptimer_init(&p->timer, 0);
 
-  if ((p->epollfd = epoll_create(1)) >= 0) {
+  if ((p->pni_epoll = pni_epoll())) {
     if ((p->eventfd = eventfd(0, EFD_NONBLOCK)) >= 0) {
       if ((p->interruptfd = eventfd(0, EFD_NONBLOCK)) >= 0) {
         if (p->timer.timerfd >= 0)
           if ((p->collector = pn_collector()) != NULL) {
             p->batch.next_event = &proactor_batch_next;
-            start_polling(&p->timer.epoll_io, p->epollfd);  // TODO: check for error
+            start_polling(&p->timer.epoll_io, p->pni_epoll);  // TODO: check for error
             p->timer_armed = true;
-            epoll_wake_init(&p->epoll_wake, p->eventfd, p->epollfd);
-            epoll_wake_init(&p->epoll_interrupt, p->interruptfd, p->epollfd);
+            epoll_wake_init(&p->epoll_wake, p->eventfd, p->pni_epoll);
+            epoll_wake_init(&p->epoll_interrupt, p->interruptfd, p->pni_epoll);
             return p;
           }
       }
     }
   }
-  if (p->epollfd >= 0) close(p->epollfd);
+  pni_epoll_free(p->pni_epoll);
   if (p->eventfd >= 0) close(p->eventfd);
   if (p->interruptfd >= 0) close(p->interruptfd);
   ptimer_finalize(&p->timer);
@@ -1805,8 +1768,6 @@ pn_proactor_t *pn_proactor() {
 void pn_proactor_free(pn_proactor_t *p) {
   //  No competing threads, not even a pending timer
   p->shutting_down = true;
-  close(p->epollfd);
-  p->epollfd = -1;
   close(p->eventfd);
   p->eventfd = -1;
   close(p->interruptfd);
@@ -1826,7 +1787,7 @@ void pn_proactor_free(pn_proactor_t *p) {
       break;
     }
   }
-
+  pni_epoll_free(p->pni_epoll);
   pn_collector_free(p->collector);
   pmutex_finalize(&p->eventfd_mutex);
   pcontext_finalize(&p->context);
@@ -1957,7 +1918,7 @@ static bool proactor_remove(pcontext_t *ctx) {
 }
 
 static pn_event_batch_t *process_inbound_wake(pn_proactor_t *p, epoll_extended_t *ee) {
-  if  (ee->fd == p->interruptfd) {        /* Interrupts have their own dedicated eventfd */
+  if  (pni_epoll_data_fd(&ee->ed) == p->interruptfd) { /* Interrupts have their own eventfd */
     (void)read_uint64(p->interruptfd);
     rearm(p, &p->epoll_interrupt);
     return proactor_process(p, PN_PROACTOR_INTERRUPT);
@@ -1983,7 +1944,7 @@ static pn_event_batch_t *proactor_do_epoll(struct pn_proactor_t* p, bool can_blo
   while(true) {
     pn_event_batch_t *batch = NULL;
     struct epoll_event ev;
-    int n = epoll_wait(p->epollfd, &ev, 1, timeout);
+    int n = pni_epoll_wait(p->pni_epoll, &ev, timeout);
 
     if (n < 0) {
       if (errno != EINTR)
@@ -2002,8 +1963,6 @@ static pn_event_batch_t *proactor_do_epoll(struct pn_proactor_t* p, bool can_blo
     }
     assert(n == 1);
     epoll_extended_t *ee = (epoll_extended_t *) ev.data.ptr;
-    memory_barrier(ee);
-
     if (ee->type == WAKE) {
       batch = process_inbound_wake(p, ee);
     } else if (ee->type == PROACTOR_TIMER) {

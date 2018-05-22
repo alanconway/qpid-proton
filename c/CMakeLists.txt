@@ -399,6 +399,7 @@ set (qpid-proton-private-includes
   src/platform/platform.h
   src/platform/platform_fmt.h
   src/proactor/proactor-internal.h
+  bsrc/proactor/pni_epoll.h
   )
 
 set (qpid-proton-extra
@@ -470,7 +471,10 @@ if (PROACTOR STREQUAL "epoll" OR (NOT PROACTOR AND NOT BUILD_PROACTOR))
   check_symbol_exists(epoll_wait "sys/epoll.h" HAVE_EPOLL)
   if (HAVE_EPOLL)
     set (PROACTOR_OK epoll)
-    set (qpid-proton-proactor src/proactor/epoll.c src/proactor/proactor-internal.c)
+    set (qpid-proton-proactor
+      src/proactor/epoll.c
+      src/proactor/pni_epoll.c
+      src/proactor/proactor-internal.c)
     set (PROACTOR_LIBS -lpthread)
     set_source_files_properties (${qpid-proton-proactor} PROPERTIES
       COMPILE_FLAGS "${COMPILE_WARNING_FLAGS} ${COMPILE_LANGUAGE_FLAGS} ${LTO}"
