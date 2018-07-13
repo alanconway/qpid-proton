@@ -90,10 +90,12 @@ class test_handler : public proton::messaging_handler {
     std::string peer_container_id;
     std::vector<proton::symbol> peer_offered_capabilities;
     std::vector<proton::symbol> peer_desired_capabilities;
+    proton::duration peer_idle_timeout;
     proton::listener listener;
     test_listen_handler listen_handler;
 
-    test_handler(const std::string h, const proton::connection_options& c_opts)
+    test_handler(const std::string h,
+                 const proton::connection_options& c_opts=proton::connection_options())
         : closing(false), done(false), listen_handler(h, c_opts)
     {}
 
@@ -112,6 +114,7 @@ class test_handler : public proton::messaging_handler {
             peer_container_id = c.container_id();
             peer_offered_capabilities = c.offered_capabilities();
             peer_desired_capabilities = c.desired_capabilities();
+            peer_idle_timeout = c.idle_timeout();
             c.close();
         }
         closing = true;
@@ -181,6 +184,27 @@ int test_container_capabilities() {
     ASSERT_EQUAL(th.peer_desired_capabilities[0], proton::symbol("desired"));
     return 0;
 }
+
+int test_container_idle_timeout() {
+    proton::connection_options opts;
+    opts.idle_timeout(proton::duration(1000));
+    test_handler th("", opts);
+    proton::container(th).run();
+    ASSERT_EQUAL(th.peer_idle_timeout, proton::duration(1000));
+    return 0;
+}
+
+int test_container_client_options() {
+    test_handler th("");
+    proton::container c(th);
+    proton::connection_options opts;
+    opts.idle_timeout(proton::duration(1000));
+    opts.virtual_host("a.b.c");
+    c.run();
+    ASSERT_EQUAL(th.peer_idle_timeout, proton::duration(1000));
+    ASSERT_EQUAL(th.peer_vhost, "");
+    return 0;
+};
 
 int test_container_bad_address() {
     // Listen on a bad address, check for leaks

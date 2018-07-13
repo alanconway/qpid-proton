@@ -59,30 +59,40 @@ static const int MAX_SPIN = 1000; // Give up after 1000 event-less dispatches
 /// In memory connection_driver that reads and writes from byte_streams
 struct in_memory_driver : public connection_driver {
 
-    byte_stream& reads;
-    byte_stream& writes;
+    byte_stream* reads;
+    byte_stream* writes;
     int spinning;
 
     in_memory_driver(byte_stream& rd, byte_stream& wr, const std::string& name) :
-        connection_driver(name), reads(rd), writes(wr), spinning(0)  {}
+        connection_driver(name), reads(&rd), writes(&wr), spinning(0)  {}
+
+    // Simulate network partition - no indication of close_read/close_write but
+    // do_write will drop data, and do_read will never read.
+    void partition() {
+        reads = writes = 0;
+    }
 
     void do_read() {
         mutable_buffer rbuf = read_buffer();
-        size_t size = std::min(reads.size(), rbuf.size);
-        if (size) {
-            copy(reads.begin(), reads.begin()+size, static_cast<char*>(rbuf.data));
-            read_done(size);
-            reads.erase(reads.begin(), reads.begin()+size);
+        if (reads) {
+            size_t size = std::min(reads->size(), rbuf.size);
+            if (size) {
+                copy(reads->begin(), reads->begin()+size, static_cast<char*>(rbuf.data));
+                read_done(size);
+                reads->erase(reads->begin(), reads->begin()+size);
+            }
         }
     }
 
     void do_write() {
         const_buffer wbuf = write_buffer();
         if (wbuf.size) {
-            writes.insert(writes.begin(),
-                          static_cast<const char*>(wbuf.data),
-                          static_cast<const char*>(wbuf.data) + wbuf.size);
-            write_done(wbuf.size);
+            if (writes) {
+                writes->insert(writes->begin(),
+                               static_cast<const char*>(wbuf.data),
+                               static_cast<const char*>(wbuf.data) + wbuf.size);
+            }
+            write_done(wbuf.size); // Pretend we wrote even if we dropped
         }
     }
 
@@ -120,44 +130,16 @@ struct driver_pair {
         b.accept(ob);
     }
 
-    void process() { a.process(); b.process(); }
-};
-
-/// A pair of drivers that talk to each other in-memory, simulating a connection.
-/// This version also simulates the passage of time
-struct timed_driver_pair {
-    duration timeout;
-    byte_stream ab, ba;
-    in_memory_driver a, b;
-    timestamp now;
-
-    timed_driver_pair(duration t, const connection_options& oa0, const connection_options& ob0,
-                const std::string& name=""
-    ) :
-        timeout(t),
-        a(ba, ab, name+"a"), b(ab, ba, name+"b"),
-        now(100100100)
-    {
-        connection_options oa(oa0);
-        connection_options ob(ob0);
-        a.connect(oa.idle_timeout(t));
-        b.accept(ob.idle_timeout(t));
+    timestamp process(timestamp now = timestamp()) {
+        timestamp ta = a.process(now);
+        timestamp tb = b.process(now);
+        return std::min(ta, tb);
     }
 
-    void process_untimed() { a.process(); b.process(); }
-    void process_timed_succeed() {
-        timestamp anow = now + timeout - duration(100);
-        timestamp bnow = now + timeout - duration(100);
-        a.process(anow);
-        b.process(bnow);
-        now = std::max(anow, bnow);
-    }
-    void process_timed_fail() {
-        timestamp anow = now + timeout + timeout + duration(100);
-        timestamp bnow = now + timeout + timeout + duration(100);
-        a.process(anow);
-        b.process(bnow);
-        now = std::max(anow, bnow);
+    // Simulate a network partition
+    void partition() {
+        a.partition();
+        b.partition();
     }
 };
 
@@ -170,6 +152,10 @@ struct record_handler : public messaging_handler {
     std::deque<proton::message> messages;
 
     size_t link_count() const { return senders.size() + receivers.size(); }
+
+    size_t error_count() const {
+        return unhandled_errors.size() + transport_errors.size() + connection_errors.size();
+    }
 
     void on_receiver_open(receiver &l) PN_CPP_OVERRIDE {
         messaging_handler::on_receiver_open(l);
@@ -490,53 +476,47 @@ void test_message() {
     ASSERT_EQUAL(value("b"), m2.message_annotations().get("a"));
 }
 
-void test_message_timeout_succeed() {
-    // Verify a message arrives intact
+void test_partition_timeout() {
+    // Verify timeouts fire after simulated network partition
     record_handler ha, hb;
-    timed_driver_pair d(duration(2000), ha, hb);
+    duration timeout(10);
+    driver_pair d(connection_options(ha).idle_timeout(timeout),
+                  connection_options(hb).idle_timeout(timeout));
 
-    proton::sender s = d.a.connection().open_sender("x");
-    d.process_timed_succeed();
-    proton::message m("barefoot_timed_succeed");
-    m.properties().put("x", "y");
-    m.message_annotations().put("a", "b");
-    s.send(m);
+    timestamp now = timestamp::now();
+    // Drivers don't start generating ticks till they are connected
+    while (!d.a.connection().active() || !d.b.connection().active()) {
+        d.process(now);         // Establish initial time on drivers
+    }
 
-    while (hb.messages.size() == 0)
-        d.process_timed_succeed();
+    // Simulate time passing, heartbeats should keep connection open
+    timestamp then = now + timeout*10;
+    while (now < then) {
+        now = d.process(now);   // Move now forward tick by tick
+    }
+    ASSERT_EQUAL(0u, ha.error_count() + hb.error_count());
 
-    proton::message m2 = quick_pop(hb.messages);
-    ASSERT_EQUAL(value("barefoot_timed_succeed"), m2.body());
-    ASSERT_EQUAL(value("y"), m2.properties().get("x"));
-    ASSERT_EQUAL(value("b"), m2.message_annotations().get("a"));
-}
+    // Simulate a network partition, both ends should time out
+    d.partition();
+    then = now + timeout*10;
+    while (now < then && (ha.error_count() == 0 || hb.error_count() == 0)) {
+        now = d.process(now);
+    }
 
-void test_message_timeout_fail() {
-    // Verify a message arrives intact
-    record_handler ha, hb;
-    timed_driver_pair d(duration(2000), ha, hb);
+    const std::string expect = "amqp:resource-limit-exceeded: local-idle-timeout expired";
 
-    proton::sender s = d.a.connection().open_sender("x");
-    d.process_timed_fail();
-    proton::message m("barefoot_timed_fail");
-    m.properties().put("x", "y");
-    m.message_annotations().put("a", "b");
-    s.send(m);
+    ASSERT(!d.a.dispatch());
+    ASSERT_EQUAL(1u, ha.transport_errors.size());
+    ASSERT_EQUAL(expect, ha.transport_errors[0]);
 
-    d.process_timed_fail();
-
-    ASSERT_THROWS(test::error,
-        while (hb.messages.size() == 0) {
-            d.process_timed_fail();
-        }
-    );
-
+    ASSERT(!d.b.dispatch());
     ASSERT_EQUAL(1u, hb.transport_errors.size());
-    ASSERT_EQUAL("amqp:resource-limit-exceeded: local-idle-timeout expired", d.b.transport().error().what());
-    ASSERT_EQUAL(1u, ha.connection_errors.size());
-    ASSERT_EQUAL("amqp:resource-limit-exceeded: local-idle-timeout expired", d.a.connection().error().what());
+    ASSERT_EQUAL(expect, hb.transport_errors[0]);
 }
-}
+
+// FIXME aconway 2018-07-12: test no-connect timeout
+
+} // namespace
 
 int main(int argc, char** argv) {
     int failed = 0;
@@ -549,7 +529,6 @@ int main(int argc, char** argv) {
     RUN_ARGV_TEST(failed, test_link_anonymous_dynamic());
     RUN_ARGV_TEST(failed, test_link_capability_filter());
     RUN_ARGV_TEST(failed, test_message());
-    RUN_ARGV_TEST(failed, test_message_timeout_succeed());
-    RUN_ARGV_TEST(failed, test_message_timeout_fail());
+    RUN_ARGV_TEST(failed, test_partition_timeout());
     return failed;
 }
