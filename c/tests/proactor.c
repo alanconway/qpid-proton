@@ -1081,6 +1081,56 @@ static void test_message_stream(test_t *t) {
   TEST_PROACTORS_DESTROY(tps);
 }
 
+static pn_event_type_t timeout_server_handler(test_handler_t *h, pn_event_t *e) {
+  switch (pn_event_type(e)) {
+   case PN_CONNECTION_REMOTE_OPEN: {
+     pn_transport_set_idle_timeout(pn_event_transport(e), 10);
+     pn_connection_open(pn_event_connection(e));
+     return PN_EVENT_NONE;
+   }
+   default:
+    return listen_handler(h, e);
+  }
+}
+
+static void test_idle_client_timeout(test_t *t) {
+  /* Make sure a server times out a connection if the client is unresponsive. */
+  test_proactor_t tps[] = { test_proactor(t, open_wake_handler),
+                            test_proactor(t, timeout_server_handler) };
+  pn_listener_t *l = test_listen(&tps[1], "");
+
+  /* Wait for connection open to complete in both directions */
+  pn_proactor_connect2(tps[0].proactor, NULL, NULL, listener_info(l).connect);
+  TEST_ETYPE_EQUAL(t, PN_CONNECTION_REMOTE_OPEN, TEST_PROACTORS_RUN(tps));
+  TEST_PROACTORS_DRAIN(tps);
+
+  /* Run only the server proactor to simulate an unresponsive client */
+  TEST_ETYPE_EQUAL(t, PN_TRANSPORT_ERROR, test_proactors_run(&tps[1], 1));
+  TEST_CONDITION(t, "amqp:resource-limit-exceeded", "local-idle-timeout expired", last_condition);
+  TEST_ETYPE_EQUAL(t, PN_TRANSPORT_CLOSED, test_proactors_run(&tps[1], 1));
+  TEST_PROACTORS_DESTROY(tps);
+}
+
+static void test_idle_server_timeout(test_t *t) {
+  /* Make sure a client times out a connection if the sever is unresponsive. */
+  test_proactor_t tps[] = { test_proactor(t, open_wake_handler),
+                            test_proactor(t, listen_handler) };
+  pn_listener_t *l = test_listen(&tps[1], "");
+
+  /* Wait for connection open to complete in both directions */
+  pn_transport_t *transport = pn_transport();
+  pn_transport_set_idle_timeout(transport, 10);
+  pn_proactor_connect2(tps[0].proactor, NULL, transport, listener_info(l).connect);
+  TEST_ETYPE_EQUAL(t, PN_CONNECTION_REMOTE_OPEN, TEST_PROACTORS_RUN(tps));
+  TEST_PROACTORS_DRAIN(tps);
+
+  /* Run only the client proactor to simulate an unresponsive server */
+  TEST_ETYPE_EQUAL(t, PN_TRANSPORT_ERROR, test_proactors_run(&tps[0], 1));
+  TEST_CONDITION(t, "amqp:resource-limit-exceeded", "local-idle-timeout expired", last_condition);
+  TEST_ETYPE_EQUAL(t, PN_TRANSPORT_CLOSED, test_proactors_run(&tps[0], 1));
+  TEST_PROACTORS_DESTROY(tps);
+}
+
 int main(int argc, char **argv) {
   int failed = 0;
   last_condition = pn_condition();
@@ -1102,6 +1152,8 @@ int main(int argc, char **argv) {
   RUN_ARGV_TEST(failed, t, test_abort(&t));
   RUN_ARGV_TEST(failed, t, test_refuse(&t));
   RUN_ARGV_TEST(failed, t, test_message_stream(&t));
+  RUN_ARGV_TEST(failed, t, test_idle_client_timeout(&t));
+  RUN_ARGV_TEST(failed, t, test_idle_server_timeout(&t));
   pn_condition_free(last_condition);
   return failed;
 }

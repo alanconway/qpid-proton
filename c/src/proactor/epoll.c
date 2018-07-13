@@ -918,7 +918,18 @@ static pn_event_t *pconnection_batch_next(pn_event_batch_t *batch) {
   pconnection_t *pc = batch_pconnection(batch);
   if (!pc->driver.connection) return NULL;
   pn_event_t *e = pn_connection_driver_next_event(&pc->driver);
-  if (!e) {
+  if (e) {
+    switch (pn_event_type(e)) {
+     case PN_CONNECTION_REMOTE_OPEN:
+     case PN_CONNECTION_LOCAL_OPEN:
+      lock(&pc->context.mutex);
+      pc->tick_pending = true; /* Check for updates to idle-timeout */
+      unlock(&pc->context.mutex);
+      break;
+     default:
+      break;
+    }
+  } else {
     write_flush(pc);  // May generate transport event
     e = pn_connection_driver_next_event(&pc->driver);
     if (!e && pc->hog_count < HOG_MAX) {

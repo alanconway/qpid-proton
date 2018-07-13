@@ -2418,7 +2418,19 @@ static pn_event_batch_t *pconnection_process(pconnection_t *pc, iocp_result_t *r
 static pn_event_t *pconnection_batch_next(pn_event_batch_t *batch) {
   pconnection_t *pc = batch_pconnection(batch);
   pn_event_t *e = pn_connection_driver_next_event(&pc->driver);
-  if (!e && ++pc->hog_count < HOG_MAX) {
+  if (e) {
+    switch (pn_event_type(e)) {
+     case PN_CONNECTION_REMOTE_OPEN:
+     case PN_CONNECTION_LOCAL_OPEN:
+      {
+        csguard g(&pc->context.cslock);
+        pc->tick_pending = true; /* Check for updates to idle-timeout */
+      }
+      break;
+     default:
+      break;
+    }
+  } else if (++pc->hog_count < HOG_MAX) {
     pconnection_process(pc, NULL, true);  // top up
     e = pn_connection_driver_next_event(&pc->driver);
   }
