@@ -112,11 +112,11 @@ public:
 
     void boundQueue(Queue* q, std::string qn);
     void sendMsg(proton::message m) {
-        DOUT(std::cerr << "Sender:   " << this << " sending\n";);
+        DOUT(std::cout << "Sender:   " << this << " sending\n";);
         sender_.send(m);
     }
     void unsubscribed() {
-        DOUT(std::cerr << "Sender:   " << this << " deleting\n";);
+        DOUT(std::cout << "Sender:   " << this << " deleting\n";);
         delete this;
     }
 };
@@ -131,7 +131,7 @@ class Queue {
     subscriptions::iterator current_;
 
     void tryToSend() {
-        DOUT(std::cerr << "Queue:    " << this << " tryToSend: " << subscriptions_.size(););
+        DOUT(std::cout << "Queue:    " << this << " tryToSend: " << subscriptions_.size(););
         // Starting at current_, send messages to subscriptions with credit:
         // After each send try to find another subscription; Wrap around;
         // Finish when we run out of messages or credit.
@@ -142,9 +142,9 @@ class Queue {
                 current_=subscriptions_.begin();
             }
             // If we have credit send the message
-            DOUT(std::cerr << "(" << current_->second << ") ";);
+            DOUT(std::cout << "(" << current_->second << ") ";);
             if (current_->second>0) {
-                DOUT(std::cerr << current_->first << " ";);
+                DOUT(std::cout << current_->first << " ";);
                 current_->first->add(make_work(&Sender::sendMsg, current_->first, messages_.front()));
                 messages_.pop_front();
                 --current_->second;
@@ -153,7 +153,7 @@ class Queue {
                 ++outOfCredit;
             }
         }
-        DOUT(std::cerr << "\n";);
+        DOUT(std::cout << "\n";);
     }
 
 public:
@@ -166,21 +166,21 @@ public:
     }
 
     void queueMsg(proton::message m) {
-        DOUT(std::cerr << "Queue:    " << this << "(" << name_ << ") queueMsg\n";);
+        DOUT(std::cout << "Queue:    " << this << "(" << name_ << ") queueMsg\n";);
         messages_.push_back(m);
         tryToSend();
     }
     void flow(Sender* s, int c) {
-        DOUT(std::cerr << "Queue:    " << this << "(" << name_ << ") flow: " << c << " to " << s << "\n";);
+        DOUT(std::cout << "Queue:    " << this << "(" << name_ << ") flow: " << c << " to " << s << "\n";);
         subscriptions_[s] = c;
         tryToSend();
     }
     void subscribe(Sender* s) {
-        DOUT(std::cerr << "Queue:    " << this << "(" << name_ << ") subscribe Sender: " << s << "\n";);
+        DOUT(std::cout << "Queue:    " << this << "(" << name_ << ") subscribe Sender: " << s << "\n";);
         subscriptions_[s] = 0;
     }
     void unsubscribe(Sender* s) {
-        DOUT(std::cerr << "Queue:    " << this << "(" << name_ << ") unsubscribe Sender: " << s << "\n";);
+        DOUT(std::cout << "Queue:    " << this << "(" << name_ << ") unsubscribe Sender: " << s << "\n";);
         // If we're about to erase the current subscription move on
         if (current_ != subscriptions_.end() && current_->first==s) ++current_;
         subscriptions_.erase(s);
@@ -209,7 +209,7 @@ void Sender::on_sender_close(proton::sender &sender) {
 }
 
 void Sender::boundQueue(Queue* q, std::string qn) {
-    DOUT(std::cerr << "Sender:   " << this << " bound to Queue: " << q <<"(" << qn << ")\n";);
+    DOUT(std::cout << "Sender:   " << this << " bound to Queue: " << q <<"(" << qn << ")\n";);
     queue_ = q;
     queue_name_ = qn;
 
@@ -241,7 +241,7 @@ class Receiver : public proton::messaging_handler {
     }
 
     void queueMsgs() {
-        DOUT(std::cerr << "Receiver: " << this << " queueing " << messages_.size() << " msgs to: " << queue_ << "\n";);
+        DOUT(std::cout << "Receiver: " << this << " queueing " << messages_.size() << " msgs to: " << queue_ << "\n";);
         while (!messages_.empty()) {
             queue_->add(make_work(&Queue::queueMsg, queue_, messages_.front()));
             messages_.pop_front();
@@ -258,7 +258,7 @@ public:
     }
 
     void boundQueue(Queue* q, std::string qn) {
-        DOUT(std::cerr << "Receiver: " << this << " bound to Queue: " << q << "(" << qn << ")\n";);
+        DOUT(std::cout << "Receiver: " << this << " bound to Queue: " << q << "(" << qn << ")\n";);
         queue_ = q;
         receiver_.open(proton::receiver_options()
             .source((proton::source_options().address(qn)))
@@ -355,7 +355,7 @@ public:
     }
 
     void on_error(const proton::error_condition& e) OVERRIDE {
-        std::cerr << "error: " << e.what() << std::endl;
+        std::cout << "error: " << e.what() << std::endl;
     }
 
     // The container calls on_transport_close() last.
@@ -402,7 +402,7 @@ class broker {
         }
 
         void on_error(proton::listener&, const std::string& s) OVERRIDE {
-            std::cerr << "listen error: " << s << std::endl;
+            std::cout << "listen error: " << s << std::endl;
             throw std::runtime_error(s);
         }
         QueueManager& queues_;
@@ -429,7 +429,7 @@ int main(int argc, char **argv) {
     } catch (const example::bad_option& e) {
         std::cout << opts << std::endl << e.what() << std::endl;
     } catch (const std::exception& e) {
-        std::cerr << "broker shutdown: " << e.what() << std::endl;
+        std::cout << "broker shutdown: " << e.what() << std::endl;
     }
     return 1;
 }

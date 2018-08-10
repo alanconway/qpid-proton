@@ -129,3 +129,23 @@
    fun:__run_exit_handlers
    fun:exit
 }
+
+{
+   Benign race in pni_log_enabled
+   Helgrind:Race
+   fun:pni_log_enabled
+}
+
+{
+   NSS library poking around in its own data segment upsets helgrind
+   Helgrind:Race
+   fun:strpbrk
+   fun:_nss_files_parse_servent
+}
+
+{
+   NSS library poking around in its own text segment upsets helgrind
+   Helgrind:Race
+   fun:*
+   fun:_nss_files_getservbyname_r
+}

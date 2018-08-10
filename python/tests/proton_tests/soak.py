@@ -24,9 +24,7 @@ import os
 
 from .common import Test, Skipped, free_tcp_ports, \
     MessengerReceiverC, MessengerSenderC, \
-    MessengerReceiverValgrind, MessengerSenderValgrind, \
     ReactorReceiverC, ReactorSenderC, \
-    ReactorReceiverValgrind, ReactorSenderValgrind, \
     isSSLPresent
 
 #
@@ -291,20 +289,12 @@ class MessengerTests(AppTests):
         self._ssl_check()
         self._do_oneway_test(MessengerReceiverC(), MessengerSenderC(), "amqps")
 
-    def test_oneway_valgrind(self):
-        self.valgrind_test()
-        self._do_oneway_test(MessengerReceiverValgrind(), MessengerSenderValgrind())
-
     def test_echo_C(self):
         self._do_echo_test(MessengerReceiverC(), MessengerSenderC())
 
     def test_echo_C_SSL(self):
         self._ssl_check()
         self._do_echo_test(MessengerReceiverC(), MessengerSenderC(), "amqps")
-
-    def test_echo_valgrind(self):
-        self.valgrind_test()
-        self._do_echo_test(MessengerReceiverValgrind(), MessengerSenderValgrind())
 
     def test_relay_C(self):
         self._do_relay_test(MessengerReceiverC(), MessengerReceiverC(), MessengerSenderC())
@@ -313,10 +303,6 @@ class MessengerTests(AppTests):
         self._ssl_check()
         self._do_relay_test(MessengerReceiverC(), MessengerReceiverC(), MessengerSenderC(), "amqps")
 
-    def test_relay_valgrind(self):
-        self.valgrind_test()
-        self._do_relay_test(MessengerReceiverValgrind(), MessengerReceiverValgrind(), MessengerSenderValgrind())
-
     def test_star_topology_C(self):
         self._do_star_topology_test( MessengerReceiverC, MessengerSenderC )
 
@@ -324,13 +310,5 @@ class MessengerTests(AppTests):
         self._ssl_check()
         self._do_star_topology_test( MessengerReceiverC, MessengerSenderC, "amqps" )
 
-    def test_star_topology_valgrind(self):
-        self.valgrind_test()
-        self._do_star_topology_test( MessengerReceiverValgrind, MessengerSenderValgrind )
-
     def test_oneway_reactor(self):
         self._do_oneway_test(ReactorReceiverC(), ReactorSenderC())
-
-    def test_oneway_reactor_valgrind(self):
-        self.valgrind_test()
-        self._do_oneway_test(ReactorReceiverValgrind(), ReactorSenderValgrind())
