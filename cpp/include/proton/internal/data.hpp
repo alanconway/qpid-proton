@@ -68,6 +68,9 @@ class data : public object<pn_data_t> {
     PN_CPP_EXTERN const void* point() const;
     PN_CPP_EXTERN void restore(const void* h);
 
+    // Total number of nodes in the data object.
+    PN_CPP_EXTERN size_t size() const;
+
   protected:
     void narrow();
     void widen();

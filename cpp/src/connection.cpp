@@ -184,12 +184,12 @@ void connection::wake() const {
 
 std::vector<symbol> connection::offered_capabilities() const {
     value caps(pn_connection_remote_offered_capabilities(pn_object()));
-    return get_multiple<std::vector<symbol> >(caps);
+    return multiple_field::get<std::vector<symbol> >(caps);
 }
 
 std::vector<symbol> connection::desired_capabilities() const {
     value caps(pn_connection_remote_desired_capabilities(pn_object()));
-    return get_multiple<std::vector<symbol> >(caps);
+    return multiple_field::get<std::vector<symbol> >(caps);
 }
 
 }

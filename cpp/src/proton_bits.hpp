@@ -157,14 +157,17 @@ template <class T> returned<T> make_returned(typename internal::wrapped<T>::type
     return internal::returned_factory::make<T>(pn);
 }
 
-// Get an AMQP "multiple" field from a value. A "multiple" field can be encoded as a single
-// value or as an array. This function always extracts it as a sequence, a sequence of one
-// if it is encoded as a single value.
+// AMQP multiple-value fields can be encoded as null, a single value, or an array.
+// An empty array is equivalent to null, but null is the more robust encoding
+// for interop. These functions convert between C++ vector and proton::value
+// representations.
 //
-// T should be a valid sequence type for proton::get() with a T::value_type typedef.
+// T is any C++ sequence type that works with proton::get() and value::operator=()
 //
+namespace multiple_field {
+
 template<class T>
-void get_multiple(const value& v, T& x) {
+void get(const value& v, T& x) {
     if (v.empty()) {
         x.clear();
     } else if (v.type() == ARRAY) {
@@ -175,13 +178,32 @@ void get_multiple(const value& v, T& x) {
     }
 }
 
-// Same as previous but returns the value.
 template<class T>
-T get_multiple(const value& v) {
+T get(const value& v) {
     T x;
-    get_multiple(v, x);
+    multiple_field::get(v, x);
     return x;
 }
+
+
+template<class T>
+value& put(value& v, const T& x) {
+    switch (x.size()) {
+      case 0: v.clear(); break; // Empty -> null
+      case 1: v = x[0]; break;  // Single value
+      default: v = x; break;    // Encode array
+    }
+    return v;
+}
+
+template<class T>
+value put(const T& x) {
+    value v;
+       return multiple_field::put(v, x);
+    return v;
+}
+
+} // namespace multiple_field
 
 } // namespace proton
 
