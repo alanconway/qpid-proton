@@ -49,6 +49,9 @@ template <class T> struct option {
     void update(const option<T>& x) { if (x.set) *this = x.value; }
 };
 
+template <class T> const T* as_pointer(const option<T>& o) { return o.set ? &o.value : 0; }
+template <class T> T* as_pointer(const option<T*>& o) { return o.set ? o.value : 0; }
+
 class connection_options::impl {
   public:
     option<messaging_handler*> handler;
@@ -143,9 +146,9 @@ class connection_options::impl {
             if (pn_ssl_init(ssl, ssl_client_options.value.pn_domain(), NULL))
                 throw error(MSG("client SSL/TLS initialization error"));
         } else if (!client && ssl_server_options.set) {
-                pn_ssl_t *ssl = pn_ssl(pnt);
-                if (pn_ssl_init(ssl, ssl_server_options.value.pn_domain(), NULL))
-                    throw error(MSG("server SSL/TLS initialization error"));
+            pn_ssl_t *ssl = pn_ssl(pnt);
+            if (pn_ssl_init(ssl, ssl_server_options.value.pn_domain(), NULL))
+                throw error(MSG("server SSL/TLS initialization error"));
         }
 
     }
@@ -212,10 +215,26 @@ connection_options& connection_options::sasl_allowed_mechs(const std::string &s)
 connection_options& connection_options::sasl_config_name(const std::string &n) { impl_->sasl_config_name = n; return *this; }
 connection_options& connection_options::sasl_config_path(const std::string &p) { impl_->sasl_config_path = p; return *this; }
 
+class messaging_handler* connection_options::handler() const { return as_pointer(impl_->handler); }
+const uint32_t* connection_options::max_frame_size() const { return as_pointer(impl_->max_frame_size); }
+const uint16_t* connection_options::max_sessions() const { return as_pointer(impl_->max_sessions); }
+const duration* connection_options::idle_timeout() const { return as_pointer(impl_->idle_timeout); }
+const std::string* connection_options::container_id() const { return as_pointer(impl_->container_id); }
+const std::string* connection_options::virtual_host() const { return as_pointer(impl_->virtual_host); }
+const std::string* connection_options::user() const { return as_pointer(impl_->user); }
+const class ssl_client_options* connection_options::ssl_client_options() const { return as_pointer(impl_->ssl_client_options); }
+const class ssl_server_options* connection_options::ssl_server_options() const { return as_pointer(impl_->ssl_server_options); }
+const bool* connection_options::sasl_enabled() const { return as_pointer(impl_->sasl_enabled); }
+const bool* connection_options::sasl_allow_insecure_mechs() const { return as_pointer(impl_->sasl_allow_insecure_mechs); }
+const std::string* connection_options::sasl_allowed_mechs() const { return as_pointer(impl_->sasl_allowed_mechs); }
+const std::vector<symbol>* connection_options::offered_capabilities() const { return as_pointer(impl_->offered_capabilities); }
+const std::vector<symbol>* connection_options::desired_capabilities() const { return as_pointer(impl_->desired_capabilities); }
+const std::string* connection_options::sasl_config_name() const { return as_pointer(impl_->sasl_config_name); }
+const std::string* connection_options::sasl_config_path() const { return as_pointer(impl_->sasl_config_path); }
+const reconnect_options* connection_options::reconnect() const { return as_pointer(impl_->reconnect); }
+
 void connection_options::apply_unbound(connection& c) const { impl_->apply_unbound(c); }
 void connection_options::apply_unbound_client(pn_transport_t *t) const { impl_->apply_sasl(t); impl_->apply_ssl(t, true); impl_->apply_transport(t); }
 void connection_options::apply_unbound_server(pn_transport_t *t) const { impl_->apply_sasl(t); impl_->apply_ssl(t, false); impl_->apply_transport(t); }
-
-messaging_handler* connection_options::handler() const { return impl_->handler.value; }
 
 } // namespace proton
