@@ -117,8 +117,23 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     /// condition.
     PN_CPP_EXTERN virtual void on_transport_error(transport&);
 
+    /// **Unsettled API** - Called exactly once before any other connection events.
+    /// Use for initial setup and to pipeline link/session open with the connection open.
+    /// See @ref reconnect_options for an overview of connection life-cycle.
+    PN_CPP_EXTERN virtual void on_connection_start(connection&);
+
     /// The remote peer opened the connection.
+    ///
+    /// @note: if @ref reconnect_options are set then this is called
+    /// once for the initial connection, and once for every automatic reconnect.
+    /// See @ref reconnect_options and on_connection_start()
     PN_CPP_EXTERN virtual void on_connection_open(connection&);
+
+    /// The connection was disconnected.
+    ///
+    /// The transport has been closed and unbound from the connection.
+    /// If @ref reconnect_options are set, reconnect will proceed automatically.
+    PN_CPP_EXTERN virtual void on_connection_disconnect(connection&);
 
     /// The remote peer closed the connection.
     PN_CPP_EXTERN virtual void on_connection_close(connection&);
@@ -127,6 +142,10 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     PN_CPP_EXTERN virtual void on_connection_error(connection&);
 
     /// The remote peer opened the session.
+    ///
+    /// @note: if @ref reconnect_options are set then this is called
+    /// for the initial connection *and* every subsequent reconnect.
+    /// See @ref reconnect_options for more detail.
     PN_CPP_EXTERN virtual void on_session_open(session&);
 
     /// The remote peer closed the session.
@@ -136,6 +155,10 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     PN_CPP_EXTERN virtual void on_session_error(session&);
 
     /// The remote peer opened the link.
+    ///
+    /// @note: if @ref reconnect_options are set then this is called
+    /// for the initial connection *and* every subsequent reconnect.
+    /// See @ref reconnect_options for more detail.
     PN_CPP_EXTERN virtual void on_receiver_open(receiver&);
 
     /// The remote peer detached the link.
@@ -148,6 +171,10 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     PN_CPP_EXTERN virtual void on_receiver_error(receiver&);
 
     /// The remote peer opened the link.
+    ///
+    /// @note: if @ref reconnect_options are set then this is called
+    /// for the initial connection *and* every subsequent reconnect.
+    /// See @ref reconnect_options for more detail.
     PN_CPP_EXTERN virtual void on_sender_open(sender&);
 
     /// The remote peer detached the link.

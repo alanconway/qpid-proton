@@ -17,18 +17,18 @@
  * under the License.
  */
 
-
 #include "test_bits.hpp"
-#include "proton/error_condition.hpp"
 #include "proton/connection.hpp"
 #include "proton/connection_options.hpp"
 #include "proton/container.hpp"
 #include "proton/delivery.hpp"
+#include "proton/error_condition.hpp"
+#include "proton/listen_handler.hpp"
+#include "proton/listener.hpp"
 #include "proton/message.hpp"
 #include "proton/messaging_handler.hpp"
-#include "proton/listener.hpp"
-#include "proton/listen_handler.hpp"
 #include "proton/reconnect_options.hpp"
+#include "proton/transport.hpp"
 #include "proton/work_queue.hpp"
 
 #include "proton/internal/pn_unique_ptr.hpp"
@@ -82,7 +82,6 @@ class server_connection_handler : public proton::messaging_handler {
 
     void close (proton::connection &c) {
         if (closing_) return;
-
         c.close(proton::error_condition("amqp:connection:forced", "Failover testing"));
         closing_ = true;
     }
@@ -125,7 +124,10 @@ class server_connection_handler : public proton::messaging_handler {
 
 class tester : public proton::messaging_handler, public waiter {
   public:
-    tester() : waiter(3), container_(*this, "reconnect_server") {}
+    int start_count, open_count, link_open_count;
+
+    tester() : waiter(3), start_count(0), open_count(0), link_open_count(0),
+               container_(*this, "reconnect_server") {}
 
     void on_container_start(proton::container &c) PN_CPP_OVERRIDE {
         // Server that fails upon connection
@@ -144,14 +146,21 @@ class tester : public proton::messaging_handler, public waiter {
         container_.connect(s1->url(), proton::connection_options().reconnect(proton::reconnect_options().failover_urls(urls)));
     }
 
-    void on_connection_open(proton::connection& c) PN_CPP_OVERRIDE {
+    void on_connection_start(proton::connection& c) PN_CPP_OVERRIDE {
+        start_count++;
         c.open_sender("messages");
     }
 
+    void on_connection_open(proton::connection& c) PN_CPP_OVERRIDE {
+        open_count++;
+    }
+
+    void on_sender_open(proton::sender &s) PN_CPP_OVERRIDE {
+        link_open_count++;
+    }
+
     void on_sendable(proton::sender& s) PN_CPP_OVERRIDE {
-        proton::message m;
-        m.body("hello");
-        s.send(m);
+        s.send(proton::message("hello"));
     }
 
     void on_tracker_accept(proton::tracker& d) PN_CPP_OVERRIDE {
@@ -160,6 +169,9 @@ class tester : public proton::messaging_handler, public waiter {
 
     void run() {
         container_.run();
+        ASSERT_EQUAL(1, start_count);
+        ASSERT_EQUAL(3, open_count);
+        ASSERT_EQUAL(2, link_open_count); // one connect fails before links
     }
 
   private:
@@ -173,7 +185,6 @@ int test_failover_simple() {
     tester().run();
     return 0;
 }
-
 
 }
 

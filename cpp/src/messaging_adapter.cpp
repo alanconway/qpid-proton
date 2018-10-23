@@ -236,6 +236,9 @@ void on_connection_remote_open(messaging_handler& handler, pn_event_t* event) {
 
     pn_connection_t *conn = pn_event_connection(event);
     connection c(make_wrapper(conn));
+    if (!c.reconnected()) {     // Call on_connection_start() for first connect
+        handler.on_connection_start(c);
+    }
     handler.on_connection_open(c);
 }
 

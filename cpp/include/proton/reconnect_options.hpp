@@ -35,12 +35,29 @@
 
 namespace proton {
 
+// FIXME aconway 2018-10-23: lifecycle doc
+
 /// **Unsettled API** - Options for reconnect and failover after
 /// connection loss.
 ///
 /// These options determine a series of delays to coordinate
 /// reconnection attempts.  They may be open-ended or limited in time.
 /// They may be evenly spaced or increasing at an exponential rate.
+///
+///
+/// When a connection is automatically re-connected, all of its
+/// sessions and links are automatically re-established.
+/// messaging_handler::on_connection_open() is called again for the
+/// connection, messaging_handler::on_sender_open(),
+/// messaging_handler::on_receiver_open() and
+/// messaging_handler::on_session_open() are called for each child
+/// endpoint.
+///
+/// You can use messaging_handler::on_connection_start() to perform
+/// initial setup that should run exactly once, and not once per reconnect.
+/// You can also use connection::reconnected() to distinguish between the
+/// initial connection (connection::reconnected() == 0) and subsequent
+/// re-connections.
 ///
 /// Options can be "chained". See @ref proton::connection_options.
 ///

@@ -172,6 +172,12 @@ PN_CPP_CLASS_EXTERN connection : public internal::object<pn_connection_t>, publi
     /// execute code safely in the event-handler thread.
     PN_CPP_EXTERN void wake() const;
 
+    /// **Unsettled API** - Reconnect count
+    /// @return the number of times this connection has been re-connected.
+    /// Returns 0 during the initial connection, increases on each reconnect.
+    /// See @ref reconnect_options to enable automatic reconnect.
+    int reconnected() const;
+
     /// @cond INTERNAL
   friend class internal::factory<connection>;
   friend class container;
