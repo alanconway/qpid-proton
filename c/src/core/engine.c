@@ -538,6 +538,7 @@ pn_connection_t *pn_connection()
   conn->context = pn_record();
   conn->delivery_pool = pn_list(PN_OBJECT, 0);
   conn->driver = NULL;
+  conn->remote_opened = 0;
 
   return conn;
 }
@@ -2095,6 +2096,10 @@ pn_condition_t *pn_connection_remote_condition(pn_connection_t *connection)
   assert(connection);
   pn_transport_t *transport = connection->transport;
   return transport ? &transport->remote_condition : NULL;
+}
+
+int pn_connection_remote_opened(pn_connection_t *c) {
+  return c->remote_opened;
 }
 
 pn_condition_t *pn_session_condition(pn_session_t *session)

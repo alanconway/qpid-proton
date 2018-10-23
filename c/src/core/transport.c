@@ -689,6 +689,7 @@ static void pni_post_remote_open_events(pn_transport_t *transport, pn_connection
     if (transport->remote_idle_timeout) {
       pn_collector_put(connection->collector, PN_OBJECT, transport, PN_TRANSPORT);
     }
+    connection->remote_opened++;
 }
 
 int pn_transport_bind(pn_transport_t *transport, pn_connection_t *connection)

@@ -249,6 +249,7 @@ struct pn_connection_t {
   pn_record_t *context;
   pn_list_t *delivery_pool;
   struct pn_connection_driver_t *driver;
+  int remote_opened;
 };
 
 struct pn_session_t {

@@ -1081,6 +1081,95 @@ static void test_message_stream(test_t *t) {
   TEST_PROACTORS_DESTROY(tps);
 }
 
+static pn_event_type_t reconnect_client_handler(test_handler_t *th, pn_event_t *e) {
+  switch (pn_event_type(e)) {
+   case PN_LINK_REMOTE_OPEN:
+    common_handler(th, e);
+    /* Only stop on the last "z" link */
+    return !strcmp(pn_link_name(pn_event_link(e)), "z") ? PN_LINK_REMOTE_OPEN : PN_EVENT_NONE;
+
+   case PN_TRANSPORT_CLOSED:    /* Rescue the connection */
+    pn_proactor_release_connection(pn_event_connection(e));
+    return PN_TRANSPORT_CLOSED;
+
+   default:
+    return common_handler(th, e);
+  }
+}
+
+static pn_event_type_t reconnect_server_handler(test_handler_t *th, pn_event_t *e) {
+  switch (pn_event_type(e)) {
+
+   case PN_CONNECTION_REMOTE_OPEN:
+    th->connection = pn_event_connection(e);
+    break;
+
+   case PN_CONNECTION_WAKE:
+      pn_transport_close_head(pn_connection_transport(pn_event_connection(e)));
+      pn_transport_close_tail(pn_connection_transport(pn_event_connection(e)));
+      return PN_EVENT_NONE;
+
+   default:
+    break;
+  }
+  return listen_handler(th, e);
+}
+
+// Re-use a connection with the proactor, check auto-re-attach and events.
+static void test_reconnect(test_t *t) {
+  test_proactor_t tps[] = { test_proactor(t, reconnect_client_handler),
+                            test_proactor(t, reconnect_server_handler) };
+  pn_listener_t *l = test_listen(&tps[1], "");
+
+  pn_connection_t *c = pn_connection();
+  TEST_INT_EQUAL(t, 0, pn_connection_remote_opened(c));
+  pn_session_t *ssn = pn_session(c);
+  pn_session_open(ssn);
+  pn_link_open(pn_sender(ssn, "x"));
+  pn_link_open(pn_receiver(ssn, "y"));
+  pn_link_open(pn_receiver(ssn, "z"));
+
+  /* Connect and wait for links to open */
+  pn_proactor_connect2(tps[0].proactor, c, NULL, listener_info(l).connect);
+  TEST_PROACTORS_RUN_UNTIL(tps, PN_LINK_REMOTE_OPEN);
+  TEST_INT_EQUAL(t, 1, pn_connection_remote_opened(c));
+
+  pn_connection_wake(tps[1].handler.connection); /* Signal server to disconnect */
+  TEST_PROACTORS_RUN_UNTIL(tps, PN_TRANSPORT_CLOSED);
+  TEST_PROACTORS_RUN_UNTIL(tps, PN_TRANSPORT_CLOSED);
+
+  TEST_HANDLER_EXPECT_LAST(&tps[0].handler, PN_TRANSPORT_CLOSED);
+  TEST_HANDLER_EXPECT_LAST(&tps[1].handler, PN_TRANSPORT_CLOSED);
+  TEST_INT_EQUAL(t, 1, pn_connection_remote_opened(c));
+
+  /* Reconnect and verify all sessions/links are re-opened */
+  pn_proactor_connect2(tps[0].proactor, c, NULL, listener_info(l).connect);
+  TEST_PROACTORS_RUN(tps);
+  TEST_INT_EQUAL(t, 2, pn_connection_remote_opened(c));
+  TEST_HANDLER_EXPECT(&tps[0].handler,
+                      PN_CONNECTION_INIT, PN_SESSION_INIT,
+                      PN_LINK_INIT, PN_LINK_INIT, PN_LINK_INIT,
+                      PN_CONNECTION_BOUND, PN_CONNECTION_REMOTE_OPEN, PN_SESSION_REMOTE_OPEN,
+                      PN_LINK_REMOTE_OPEN, PN_LINK_REMOTE_OPEN, PN_LINK_REMOTE_OPEN,
+                      0);
+  TEST_HANDLER_EXPECT(&tps[1].handler, PN_LISTENER_ACCEPT, PN_CONNECTION_INIT, PN_CONNECTION_BOUND,
+                      PN_CONNECTION_REMOTE_OPEN,
+                      PN_SESSION_INIT, PN_SESSION_REMOTE_OPEN,
+                      PN_LINK_INIT, PN_LINK_REMOTE_OPEN,
+                      PN_LINK_INIT, PN_LINK_REMOTE_OPEN,
+                      PN_LINK_INIT, PN_LINK_REMOTE_OPEN,
+                      PN_CONNECTION_LOCAL_OPEN, PN_TRANSPORT,
+                      PN_SESSION_LOCAL_OPEN, PN_TRANSPORT,
+                      PN_LINK_LOCAL_OPEN, PN_TRANSPORT,
+                      PN_LINK_LOCAL_OPEN, PN_TRANSPORT,
+                      PN_LINK_LOCAL_OPEN, PN_TRANSPORT,
+                      0);
+
+  TEST_PROACTORS_DESTROY(tps);
+}
+
+
+
 int main(int argc, char **argv) {
   int failed = 0;
   last_condition = pn_condition();
@@ -1102,6 +1191,7 @@ int main(int argc, char **argv) {
   RUN_ARGV_TEST(failed, t, test_abort(&t));
   RUN_ARGV_TEST(failed, t, test_refuse(&t));
   RUN_ARGV_TEST(failed, t, test_message_stream(&t));
+  RUN_ARGV_TEST(failed, t, test_reconnect(&t));
   pn_condition_free(last_condition);
   return failed;
 }

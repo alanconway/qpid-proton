@@ -491,6 +491,15 @@ PN_EXTERN pn_data_t *pn_connection_remote_properties(pn_connection_t *connection
 PN_EXTERN pn_transport_t *pn_connection_transport(pn_connection_t *connection);
 
 /**
+ * Count of PN_REMOTE_OPEN events received by this connection.
+ * Greater than 1 means the connection has been re-connected
+ *
+ * @param[in] connection the connection object
+ * @return number of PN_REMOTE_OPEN events received by this connection.
+ */
+PN_EXTERN int pn_connection_remote_opened(pn_connection_t *connection);
+
+/**
  * @}
  */
 
