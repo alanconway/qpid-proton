@@ -57,8 +57,8 @@ mech_list: EXTERNAL DIGEST-MD5 SCRAM-SHA-1 CRAM-MD5 PLAIN ANONYMOUS
 _cyrusSetup('sasl-conf')
 
 class Broker(Server):
-    def __init__(self):
-        super(Broker, self).__init__(["broker", "-a", "//:0"], kill_me=True)
+    def __init__(self, port=0):
+        super(Broker, self).__init__(["broker", "-a", "//:%s" % port], kill_me=True)
 
 CLIENT_EXPECT="""Twas brillig, and the slithy toves => TWAS BRILLIG, AND THE SLITHY TOVES
 Did gire and gymble in the wabe. => DID GIRE AND GYMBLE IN THE WABE.
@@ -66,22 +66,22 @@ All mimsy were the borogroves, => ALL MIMSY WERE THE BOROGROVES,
 And the mome raths outgrabe. => AND THE MOME RATHS OUTGRABE.
 """
 
-def recv_expect():
-    return "".join(['{"sequence"=%s}\n' % (i+1) for i in range(100)])
+def recv_expect(n=100):
+    return "".join(['{"sequence"=%s}\n' % (i+1) for i in range(n)])
 
 class ContainerExampleTest(unittest.TestCase):
     """Run the container examples, verify they behave as expected."""
 
     def test_helloworld(self):
-      self.assertMultiLineEqual('Hello World!\n', check_output(["helloworld", Broker.addr]))
+      self.assertMultiLineEqual('Hello World!\n', check_output(["helloworld", broker_addr]))
 
     def test_simple_send_recv(self):
-        self.assertMultiLineEqual("all messages confirmed\n", check_output(["simple_send", "-a", Broker.addr]))
-        self.assertMultiLineEqual(recv_expect(), check_output(["simple_recv", "-a", Broker.addr]))
+        self.assertMultiLineEqual("all messages confirmed\n", check_output(["simple_send", "-a", broker_addr]))
+        self.assertMultiLineEqual(recv_expect(), check_output(["simple_recv", "-a", broker_addr]))
 
     def test_simple_recv_send(self):
-        recv = Popen(["simple_recv", "-a", Broker.addr])
-        self.assertMultiLineEqual("all messages confirmed\n", check_output(["simple_send", "-a", Broker.addr]))
+        recv = Popen(["simple_recv", "-a", broker_addr])
+        self.assertMultiLineEqual("all messages confirmed\n", check_output(["simple_send", "-a", broker_addr]))
         self.assertMultiLineEqual(recv_expect(), recv.communicate()[0])
 
     def test_simple_send_direct_recv(self):
@@ -95,9 +95,9 @@ class ContainerExampleTest(unittest.TestCase):
         self.assertMultiLineEqual("all messages confirmed\n", send.communicate()[0])
 
     def test_request_response(self):
-        with Popen(["server", Broker.addr, "example"], kill_me=True) as server:
-            server.expect("connected to %s" % Broker.addr)
-            self.assertMultiLineEqual(CLIENT_EXPECT, check_output(["client", "-a", Broker.addr]))
+        with Popen(["server", broker_addr, "example"], kill_me=True) as server:
+            server.expect("connected to %s" % broker_addr)
+            self.assertMultiLineEqual(CLIENT_EXPECT, check_output(["client", "-a", broker_addr]))
 
     def test_request_response_direct(self):
         with Server(["server_direct", "-a", "//:0"], kill_me=True) as server:
@@ -140,14 +140,14 @@ map{string(k1):int(42), symbol(k2):boolean(0)}
 
     def test_scheduled_send_03(self):
         # Output should be a bunch of "send" lines but can't guarantee exactly how many.
-        out = check_output(["scheduled_send_03", "-a", Broker.addr+"scheduled_send", "-t", "0.1", "-i", "0.001"]).split()
+        out = check_output(["scheduled_send_03", "-a", broker_addr+"scheduled_send", "-t", "0.1", "-i", "0.001"]).split()
         self.assertTrue(len(out) > 0);
         self.assertEqual(["send"]*len(out), out)
 
     def test_scheduled_send(self):
         if not in_path("scheduled_send"):
             return
-        out = check_output(["scheduled_send", "-a", Broker.addr+"scheduled_send", "-t", "0.1", "-i", "0.001"]).split()
+        out = check_output(["scheduled_send", "-a", broker_addr+"scheduled_send", "-t", "0.1", "-i", "0.001"]).split()
         self.assertTrue(len(out) > 0);
         self.assertEqual(["send"]*len(out), out)
 
@@ -166,7 +166,7 @@ expected conversion_error: "unexpected type, want: uint got: string"
     def test_multithreaded_client(self):
         if not in_path("multithreaded_client"):
             return
-        got = check_output(["multithreaded_client", Broker.addr, "examples", "10"])
+        got = check_output(["multithreaded_client", broker_addr, "examples", "10"])
         self.maxDiff = None
         self.assertIn("10 messages sent and received", got);
 
@@ -175,7 +175,7 @@ expected conversion_error: "unexpected type, want: uint got: string"
     def skip_test_multithreaded_client_flow_control(self):
         if not in_path("multithreaded_client_flow_control"):
             return
-        got = check_output(["multithreaded_client_flow_control", Broker.addr, "examples", "10", "2"])
+        got = check_output(["multithreaded_client_flow_control", broker_addr, "examples", "10", "2"])
         self.maxDiff = None
         self.assertIn("20 messages sent and received", got);
 
@@ -214,5 +214,5 @@ Hello World!
 
 if __name__ == "__main__":
     with Broker() as b:
-      Broker.addr = b.addr
+      broker_addr = b.addr
       unittest.main()

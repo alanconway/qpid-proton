@@ -29,6 +29,7 @@
 #include <proton/message.hpp>
 #include <proton/message_id.hpp>
 #include <proton/messaging_handler.hpp>
+#include <proton/reconnect_options.hpp>
 #include <proton/value.hpp>
 
 #include <iostream>
@@ -44,23 +45,26 @@ class simple_recv : public proton::messaging_handler {
     proton::receiver receiver;
     int expected;
     int received;
+    bool reconnect;
 
   public:
-    simple_recv(const std::string &s, const std::string &u, const std::string &p, int c) :
-        url(s), user(u), password(p), expected(c), received(0) {}
+    simple_recv(const std::string &s, const std::string &u, const std::string &p, int c, bool r) :
+        url(s), user(u), password(p), expected(c), received(0), reconnect(r) {}
 
     void on_container_start(proton::container &c) OVERRIDE {
         proton::connection_options co;
         if (!user.empty()) co.user(user);
         if (!password.empty()) co.password(password);
+        if (reconnect) co.reconnect(proton::reconnect_options());
         receiver = c.open_receiver(url, co);
     }
 
     void on_message(proton::delivery &d, proton::message &msg) OVERRIDE {
-        if (!msg.id().empty() && proton::coerce<int>(msg.id()) < received) {
-            return; // Ignore if no id or duplicate
+        if (proton::coerce<int>(msg.id()) <= received) {
+            // If the sender re-connects it may re-send unconfirmed messages.
+            // Ignore duplicate messages.
+            return;
         }
-
         if (expected == 0 || received < expected) {
             std::cout << msg.body() << std::endl;
             received++;
@@ -78,18 +82,19 @@ int main(int argc, char **argv) {
     std::string user;
     std::string password;
     int message_count = 100;
+    bool reconnect;
     example::options opts(argc, argv);
 
     opts.add_value(address, 'a', "address", "connect to and receive from URL", "URL");
     opts.add_value(message_count, 'm', "messages", "receive COUNT messages", "COUNT");
     opts.add_value(user, 'u', "user", "authenticate as USER", "USER");
     opts.add_value(password, 'p', "password", "authenticate with PASSWORD", "PASSWORD");
-
+    opts.add_flag(reconnect, 'r', "reconnect", "enable automatic reconnect if connection is lost");
 
     try {
         opts.parse();
 
-        simple_recv recv(address, user, password, message_count);
+        simple_recv recv(address, user, password, message_count, reconnect);
         proton::container(recv).run();
 
         return 0;
