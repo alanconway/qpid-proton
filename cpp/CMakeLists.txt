@@ -282,7 +282,6 @@ add_cpp_test(map_test)
 add_cpp_test(scalar_test)
 add_cpp_test(value_test)
 add_cpp_test(container_test)
-add_cpp_test(url_test)
 add_cpp_test(reconnect_test)
 add_cpp_test(link_test)
 if (ENABLE_JSONCPP)
@@ -292,3 +291,22 @@ if (ENABLE_JSONCPP)
   # Test data and output directories for connect_config_test
   file(COPY  "${CMAKE_CURRENT_SOURCE_DIR}/testdata" DESTINATION "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
+
+# FIXME aconway 2018-10-31: catch tests
+# Tests using the Catch2 framework are built into a single executable.
+# They can be run individually or in groups by giving arguments to the test runner.
+# This file adds a CTest test to run tests in groups by tag.
+
+include_directories(${CMAKE_SOURCE_DIR}/tests/include)
+add_executable(cpp-test src/cpp-test.cpp src/url_test.cpp)
+target_link_libraries(cpp-test qpid-proton-cpp ${PLATFORM_LIBS})
+
+macro(add_catch_test tag)
+  add_test (
+    NAME cpp-${tag}-test
+    COMMAND ${PN_ENV_SCRIPT} -- ${test_env}
+    ${TEST_EXE_PREFIX_CMD} $<TARGET_FILE:cpp-test> "[${tag}]"
+    )
+endmacro(add_catch_test)
+
+add_catch_test(url)
