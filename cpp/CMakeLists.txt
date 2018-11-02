@@ -298,7 +298,8 @@ endif()
 # This file adds a CTest test to run tests in groups by tag.
 
 include_directories(${CMAKE_SOURCE_DIR}/tests/include)
-add_executable(cpp-test src/cpp-test.cpp src/url_test.cpp)
+add_executable(cpp-test src/cpp-test.cpp
+  src/url_test.cpp)
 target_link_libraries(cpp-test qpid-proton-cpp ${PLATFORM_LIBS})
 
 macro(add_catch_test tag)

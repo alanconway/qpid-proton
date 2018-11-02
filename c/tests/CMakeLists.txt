@@ -17,22 +17,46 @@
 # under the License.
 #
 
-add_definitions(${COMPILE_WARNING_FLAGS} ${COMPILE_PLATFORM_FLAGS})
-
 configure_file(test_config.h.in test_config.h)
-include_directories(${CMAKE_CURRENT_BINARY_DIR})
+include_directories(${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR}/tests/include)
 
-set(test_env ${PN_ENV_SCRIPT} -- "PATH=$<TARGET_FILE_DIR:qpid-proton-core>")
+# NOTE: C library tests are written in C++ using the Catch2 framework.
+# The tests are more concise than with a native C framework and we can
+# use the same framework for C++ tests.
+#
+# Tests are built into a single executable and can be run individually
+# or in groups by giving arguments to the test runner. CTest is set up
+# to run tests in groups by tag.
+
+# For each tag: compile ${tag}_test.cpp and add CTest target c-${tag}-test to run that files tests
+set(tags object)
+
+foreach(tag ${tags})
+  set(test_src ${test_src} "${tag}_test.cpp") # Add to test sources
+  set(ctest c-${tag}-test)
+  add_test (NAME ${ctest}
+    COMMAND ${TEST_EXE_PREFIX_CMD} "$<TARGET_FILE:c-test>" "-#" "[#${tag}_test]")
+  if (WIN32)
+    set_tests_properties(${ctest} PROPERTIES ENVIRONMENT PATH="$<TARGET_DIR:qpid-proton-core")
+  endif(WIN32)
+endforeach()
+
+# Executable containing all the catch2 tests
+add_executable(c-test c-test.cpp ${test_src})
+set_target_properties(c-test PROPERTIES COMPILE_FLAGS "${CMAKE_CXX_FLAGS} ${CXX_WARNING_FLAGS}")
+target_link_libraries(c-test PRIVATE qpid-proton-core ${PLATFORM_LIBS})
 
 # Add test without any qpid-proton lib: allows choice of
 # qpid-proton-core or qpid-proton
 macro (pn_add_c_test_nolib test)
   add_executable (${test} ${ARGN})
   target_link_libraries (${test} ${PLATFORM_LIBS})
+  set_source_files_properties (${ARGN} PROPERTIES
+    COMPILE_FLAGS "${COMPILE_WARNING_FLAGS} ${COMPILE_PLATFORM_FLAGS}")
   if (BUILD_WITH_CXX)
     set_source_files_properties (${ARGN} PROPERTIES LANGUAGE CXX)
   endif (BUILD_WITH_CXX)
-  add_test(NAME ${test} COMMAND ${test_env} ${TEST_EXE_PREFIX_CMD} $<TARGET_FILE:${test}>)
+  add_test(NAME ${test} COMMAND ${test_env} $<TARGET_FILE:${test}>)
 endmacro (pn_add_c_test_nolib)
 
 # Add test with qpid-proton-core linked
@@ -41,7 +65,6 @@ macro (pn_add_c_test test)
   target_link_libraries (${test} qpid-proton-core ${PLATFORM_LIBS})
 endmacro (pn_add_c_test)
 
-pn_add_c_test (c-object-tests object.c)
 pn_add_c_test (c-message-tests message.c)
 pn_add_c_test (c-engine-tests engine.c)
 pn_add_c_test (c-refcount-tests refcount.c)
@@ -82,3 +105,4 @@ endif(HAS_PROACTOR)
 if (ENABLE_FUZZ_TESTING)
   add_subdirectory(fuzz)
 endif (ENABLE_FUZZ_TESTING)
+

@@ -19,13 +19,15 @@
  *
  */
 
+#include <catch_extra.hpp>
+
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <proton/object.h>
 
-#define assert(E) ((E) ? 0 : (abort(), 0))
+using Catch::Matchers::Equals;
 
 static char mem;
 static void *END = &mem;
@@ -100,47 +102,64 @@ static const pn_class_t noop_class = PN_CLASS(noop);
 
 static void test_class(const pn_class_t *clazz, size_t size)
 {
+  INFO("class=" <<  pn_class_name(clazz) << " size=" << size);
   void *a = pn_class_new(clazz, size);
   void *b = pn_class_new(clazz, size);
 
-  assert(!pn_class_equals(clazz, a, b));
-  assert(pn_class_equals(clazz, a, a));
-  assert(pn_class_equals(clazz, b, b));
-  assert(!pn_class_equals(clazz, a, NULL));
-  assert(!pn_class_equals(clazz, NULL, a));
+  REQUIRE(!pn_class_equals(clazz, a, b));
+  REQUIRE(pn_class_equals(clazz, a, a));
+  REQUIRE(pn_class_equals(clazz, b, b));
+  REQUIRE(!pn_class_equals(clazz, a, NULL));
+  REQUIRE(!pn_class_equals(clazz, NULL, a));
 
   int rca = pn_class_refcount(clazz, a);
   int rcb = pn_class_refcount(clazz, b);
 
-  assert(rca == -1 || rca == 1);
-  assert(rcb == -1 || rcb == 1);
+  REQUIRE((rca == -1 || rca == 1));
+  REQUIRE((rcb == -1 || rcb == 1));
 
   pn_class_incref(clazz, a);
 
   rca = pn_class_refcount(clazz, a);
-  assert(rca == -1 || rca == 2);
+  REQUIRE((rca == -1 || rca == 2));
 
   pn_class_decref(clazz, a);
 
   rca = pn_class_refcount(clazz, a);
-  assert(rca == -1 || rca == 1);
+  REQUIRE((rca == -1 || rca == 1));
 
   pn_class_free(clazz, a);
   pn_class_free(clazz, b);
 }
 
+TEST_CASE("class") {
+  for (size_t i = 0; i < 128; i++) {
+    test_class(PN_OBJECT, i);
+    test_class(PN_VOID, i);
+    test_class(&noop_class, i);
+  }
+}
+
 static void test_new(size_t size, const pn_class_t *clazz)
 {
+  INFO("class=" <<  pn_class_name(clazz) << " size=" << size);
   void *obj = pn_class_new(clazz, size);
-  assert(obj);
-  assert(pn_class_refcount(PN_OBJECT, obj) == 1);
-  assert(pn_class(obj) == clazz);
+  REQUIRE(obj);
+  REQUIRE(pn_class_refcount(PN_OBJECT, obj) == 1);
+  REQUIRE(pn_class(obj) == clazz);
   char *bytes = (char *) obj;
   for (size_t i = 0; i < size; i++) {
     // touch everything for valgrind
     bytes[i] = i;
   }
   pn_free(obj);
+}
+
+TEST_CASE("class new") {
+  for (size_t i = 0; i < 128; i++) {
+    test_new(i, PN_OBJECT);
+    test_new(i, &noop_class);
+  }
 }
 
 static void finalizer(void *object)
@@ -156,21 +175,21 @@ static void finalizer(void *object)
 #define finalizer_compare NULL
 #define finalizer_inspect NULL
 
-static void test_finalize(void)
+TEST_CASE("finalize")
 {
   static pn_class_t clazz = PN_CLASS(finalizer);
 
   int **obj = (int **) pn_class_new(&clazz, sizeof(int *));
-  assert(obj);
+  REQUIRE(obj);
 
   int called = 0;
   *obj = &called;
   pn_free(obj);
 
-  assert(called == 1);
+  REQUIRE(called == 1);
 }
 
-static void test_free(void)
+TEST_CASE("free")
 {
   // just to make sure it doesn't seg fault or anything
   pn_free(NULL);
@@ -185,13 +204,13 @@ static uintptr_t hashcode(void *obj) { return (uintptr_t) obj; }
 #define hashcode_hashcode hashcode
 #define hashcode_inspect NULL
 
-static void test_hashcode(void)
+TEST_CASE("hashcode")
 {
   static pn_class_t clazz = PN_CLASS(hashcode);
   void *obj = pn_class_new(&clazz, 0);
-  assert(obj);
-  assert(pn_hashcode(obj) == (uintptr_t) obj);
-  assert(pn_hashcode(NULL) == 0);
+  REQUIRE(obj);
+  REQUIRE(pn_hashcode(obj) == (uintptr_t) obj);
+  REQUIRE(pn_hashcode(NULL) == 0);
   pn_free(obj);
 }
 
@@ -202,31 +221,31 @@ static void test_hashcode(void)
 #define compare_hashcode NULL
 #define compare_inspect NULL
 
-static void test_compare(void)
+TEST_CASE("compare")
 {
   static pn_class_t clazz = PN_CLASS(compare);
 
   void *a = pn_class_new(&clazz, 0);
-  assert(a);
+  REQUIRE(a);
   void *b = pn_class_new(&clazz, 0);
-  assert(b);
+  REQUIRE(b);
 
-  assert(pn_compare(a, b));
-  assert(!pn_equals(a, b));
-  assert(!pn_compare(a, a));
-  assert(pn_equals(a, a));
-  assert(!pn_compare(b, b));
-  assert(pn_equals(b, b));
-  assert(pn_compare(a, b) == (intptr_t) ((uintptr_t) b - (uintptr_t) a));
+  REQUIRE(pn_compare(a, b));
+  REQUIRE(!pn_equals(a, b));
+  REQUIRE(!pn_compare(a, a));
+  REQUIRE(pn_equals(a, a));
+  REQUIRE(!pn_compare(b, b));
+  REQUIRE(pn_equals(b, b));
+  REQUIRE(pn_compare(a, b) == (intptr_t) ((uintptr_t) b - (uintptr_t) a));
 
-  assert(pn_compare(NULL, b));
-  assert(!pn_equals(NULL, b));
+  REQUIRE(pn_compare(NULL, b));
+  REQUIRE(!pn_equals(NULL, b));
 
-  assert(pn_compare(a, NULL));
-  assert(!pn_equals(a, NULL));
+  REQUIRE(pn_compare(a, NULL));
+  REQUIRE(!pn_equals(a, NULL));
 
-  assert(!pn_compare(NULL, NULL));
-  assert(pn_equals(NULL, NULL));
+  REQUIRE(!pn_compare(NULL, NULL));
+  REQUIRE(pn_equals(NULL, NULL));
 
   pn_free(a);
   pn_free(b);
@@ -234,45 +253,56 @@ static void test_compare(void)
 
 static void test_refcounting(int refs)
 {
+  INFO("refs=" <<  refs);
   void *obj = pn_class_new(PN_OBJECT, 0);
 
-  assert(pn_refcount(obj) == 1);
+  REQUIRE(pn_refcount(obj) == 1);
 
   for (int i = 0; i < refs; i++) {
     pn_incref(obj);
-    assert(pn_refcount(obj) == i + 2);
+    REQUIRE(pn_refcount(obj) == i + 2);
   }
 
-  assert(pn_refcount(obj) == refs + 1);
+  REQUIRE(pn_refcount(obj) == refs + 1);
 
   for (int i = 0; i < refs; i++) {
     pn_decref(obj);
-    assert(pn_refcount(obj) == refs - i);
+    REQUIRE(pn_refcount(obj) == refs - i);
   }
 
-  assert(pn_refcount(obj) == 1);
+  REQUIRE(pn_refcount(obj) == 1);
 
   pn_free(obj);
 }
 
+TEST_CASE("refcounting") {
+  for (int i = 0; i < 1024; ++i) { test_refcounting(i); }
+}
+
 static void test_list(size_t capacity)
 {
+  INFO("capacity=" <<  capacity);
   pn_list_t *list = pn_list(PN_WEAKREF, 0);
-  assert(pn_list_size(list) == 0);
-  assert(!pn_list_add(list, (void *) 0));
-  assert(!pn_list_add(list, (void *) 1));
-  assert(!pn_list_add(list, (void *) 2));
-  assert(!pn_list_add(list, (void *) 3));
-  assert(pn_list_get(list, 0) == (void *) 0);
-  assert(pn_list_get(list, 1) == (void *) 1);
-  assert(pn_list_get(list, 2) == (void *) 2);
-  assert(pn_list_get(list, 3) == (void *) 3);
-  assert(pn_list_size(list) == 4);
+  REQUIRE(pn_list_size(list) == 0);
+  REQUIRE(!pn_list_add(list, (void *) 0));
+  REQUIRE(!pn_list_add(list, (void *) 1));
+  REQUIRE(!pn_list_add(list, (void *) 2));
+  REQUIRE(!pn_list_add(list, (void *) 3));
+  REQUIRE(pn_list_get(list, 0) == (void *) 0);
+  REQUIRE(pn_list_get(list, 1) == (void *) 1);
+  REQUIRE(pn_list_get(list, 2) == (void *) 2);
+  REQUIRE(pn_list_get(list, 3) == (void *) 3);
+  REQUIRE(pn_list_size(list) == 4);
   pn_list_del(list, 1, 2);
-  assert(pn_list_size(list) == 2);
-  assert(pn_list_get(list, 0) == (void *) 0);
-  assert(pn_list_get(list, 1) == (void *) 3);
+  REQUIRE(pn_list_size(list) == 2);
+  REQUIRE(pn_list_get(list, 0) == (void *) 0);
+  REQUIRE(pn_list_get(list, 1) == (void *) 3);
   pn_decref(list);
+}
+
+TEST_CASE("list")
+{
+  for (int i = 0; i < 4; ++i) { test_list(i); }
 }
 
 static void test_list_refcount(size_t capacity)
@@ -283,43 +313,43 @@ static void test_list_refcount(size_t capacity)
   void *four = pn_class_new(PN_OBJECT, 0);
 
   pn_list_t *list = pn_list(PN_OBJECT, 0);
-  assert(!pn_list_add(list, one));
-  assert(!pn_list_add(list, two));
-  assert(!pn_list_add(list, three));
-  assert(!pn_list_add(list, four));
-  assert(pn_list_get(list, 0) == one);
-  assert(pn_list_get(list, 1) == two);
-  assert(pn_list_get(list, 2) == three);
-  assert(pn_list_get(list, 3) == four);
-  assert(pn_list_size(list) == 4);
+  REQUIRE(!pn_list_add(list, one));
+  REQUIRE(!pn_list_add(list, two));
+  REQUIRE(!pn_list_add(list, three));
+  REQUIRE(!pn_list_add(list, four));
+  REQUIRE(pn_list_get(list, 0) == one);
+  REQUIRE(pn_list_get(list, 1) == two);
+  REQUIRE(pn_list_get(list, 2) == three);
+  REQUIRE(pn_list_get(list, 3) == four);
+  REQUIRE(pn_list_size(list) == 4);
 
-  assert(pn_refcount(one) == 2);
-  assert(pn_refcount(two) == 2);
-  assert(pn_refcount(three) == 2);
-  assert(pn_refcount(four) == 2);
+  REQUIRE(pn_refcount(one) == 2);
+  REQUIRE(pn_refcount(two) == 2);
+  REQUIRE(pn_refcount(three) == 2);
+  REQUIRE(pn_refcount(four) == 2);
 
   pn_list_del(list, 1, 2);
-  assert(pn_list_size(list) == 2);
+  REQUIRE(pn_list_size(list) == 2);
 
-  assert(pn_refcount(one) == 2);
-  assert(pn_refcount(two) == 1);
-  assert(pn_refcount(three) == 1);
-  assert(pn_refcount(four) == 2);
+  REQUIRE(pn_refcount(one) == 2);
+  REQUIRE(pn_refcount(two) == 1);
+  REQUIRE(pn_refcount(three) == 1);
+  REQUIRE(pn_refcount(four) == 2);
 
-  assert(pn_list_get(list, 0) == one);
-  assert(pn_list_get(list, 1) == four);
+  REQUIRE(pn_list_get(list, 0) == one);
+  REQUIRE(pn_list_get(list, 1) == four);
 
-  assert(!pn_list_add(list, one));
+  REQUIRE(!pn_list_add(list, one));
 
-  assert(pn_list_size(list) == 3);
-  assert(pn_refcount(one) == 3);
+  REQUIRE(pn_list_size(list) == 3);
+  REQUIRE(pn_refcount(one) == 3);
 
   pn_decref(list);
 
-  assert(pn_refcount(one) == 1);
-  assert(pn_refcount(two) == 1);
-  assert(pn_refcount(three) == 1);
-  assert(pn_refcount(four) == 1);
+  REQUIRE(pn_refcount(one) == 1);
+  REQUIRE(pn_refcount(two) == 1);
+  REQUIRE(pn_refcount(three) == 1);
+  REQUIRE(pn_refcount(four) == 1);
 
   pn_decref(one);
   pn_decref(two);
@@ -327,12 +357,14 @@ static void test_list_refcount(size_t capacity)
   pn_decref(four);
 }
 
-static void check_list_index(pn_list_t *list, void *value, ssize_t idx)
+TEST_CASE("list refcount")
 {
-  assert(pn_list_index(list, value) == idx);
+  for (int i = 0; i < 4; ++i) { test_list_refcount(i); }
 }
 
-static void test_list_index(void)
+#define check_list_index(list, value, idx)  REQUIRE(pn_list_index(list, value) == idx)
+
+TEST_CASE("list_index")
 {
   pn_list_t *l = pn_list(PN_WEAKREF, 0);
   void *one = pn_string("one");
@@ -370,12 +402,7 @@ static void test_list_index(void)
   pn_free(nonexistent);
 }
 
-static bool pn_strequals(const char *a, const char *b)
-{
-  return !strcmp(a, b);
-}
-
-static void test_build_list(void)
+TEST_CASE("build_list")
 {
   pn_list_t *l = build_list(0,
                             pn_string("one"),
@@ -383,19 +410,15 @@ static void test_build_list(void)
                             pn_string("three"),
                             END);
 
-  assert(pn_list_size(l) == 3);
+  REQUIRE(pn_list_size(l) == 3);
 
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_list_get(l, 0)),
-                      "one"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_list_get(l, 1)),
-                      "two"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_list_get(l, 2)),
-                      "three"));
-
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_list_get(l, 0)), Equals("one"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_list_get(l, 1)), Equals("two"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_list_get(l, 2)), Equals("three"));
   pn_free(l);
 }
 
-static void test_build_map(void)
+TEST_CASE("build_map")
 {
   pn_map_t *m = build_map(0.75, 0,
                           pn_string("key"),
@@ -404,22 +427,20 @@ static void test_build_map(void)
                           pn_string("value2"),
                           END);
 
-  assert(pn_map_size(m) == 2);
+  REQUIRE(pn_map_size(m) == 2);
 
   pn_string_t *key = pn_string(NULL);
 
   pn_string_set(key, "key");
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_map_get(m, key)),
-                      "value"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_map_get(m, key)), Equals("value"));
   pn_string_set(key, "key2");
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_map_get(m, key)),
-                      "value2"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_map_get(m, key)), Equals("value2"));
 
   pn_free(m);
   pn_free(key);
 }
 
-static void test_build_map_odd(void)
+TEST_CASE("build_map_odd")
 {
   pn_map_t *m = build_map(0.75, 0,
                           pn_string("key"),
@@ -429,73 +450,71 @@ static void test_build_map_odd(void)
                           pn_string("key3"),
                           END);
 
-  assert(pn_map_size(m) == 3);
+  REQUIRE(pn_map_size(m) == 3);
 
   pn_string_t *key = pn_string(NULL);
 
   pn_string_set(key, "key");
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_map_get(m, key)),
-                      "value"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_map_get(m, key)), Equals("value"));
   pn_string_set(key, "key2");
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_map_get(m, key)),
-                      "value2"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_map_get(m, key)), Equals("value2"));
   pn_string_set(key, "key3");
-  assert(pn_map_get(m, key) == NULL);
+  REQUIRE(pn_map_get(m, key) == NULL);
 
   pn_free(m);
   pn_free(key);
 }
 
-static void test_map(void)
+TEST_CASE("map")
 {
   void *one = pn_class_new(PN_OBJECT, 0);
   void *two = pn_class_new(PN_OBJECT, 0);
   void *three = pn_class_new(PN_OBJECT, 0);
 
   pn_map_t *map = pn_map(PN_OBJECT, PN_OBJECT, 4, 0.75);
-  assert(pn_map_size(map) == 0);
+  REQUIRE(pn_map_size(map) == 0);
 
   pn_string_t *key = pn_string("key");
   pn_string_t *dup = pn_string("key");
   pn_string_t *key1 = pn_string("key1");
   pn_string_t *key2 = pn_string("key2");
 
-  assert(!pn_map_put(map, key, one));
-  assert(pn_map_size(map) == 1);
-  assert(!pn_map_put(map, key1, two));
-  assert(pn_map_size(map) == 2);
-  assert(!pn_map_put(map, key2, three));
-  assert(pn_map_size(map) == 3);
+  REQUIRE(!pn_map_put(map, key, one));
+  REQUIRE(pn_map_size(map) == 1);
+  REQUIRE(!pn_map_put(map, key1, two));
+  REQUIRE(pn_map_size(map) == 2);
+  REQUIRE(!pn_map_put(map, key2, three));
+  REQUIRE(pn_map_size(map) == 3);
 
-  assert(pn_map_get(map, dup) == one);
+  REQUIRE(pn_map_get(map, dup) == one);
 
-  assert(!pn_map_put(map, dup, one));
-  assert(pn_map_size(map) == 3);
+  REQUIRE(!pn_map_put(map, dup, one));
+  REQUIRE(pn_map_size(map) == 3);
 
-  assert(!pn_map_put(map, dup, two));
-  assert(pn_map_size(map) == 3);
-  assert(pn_map_get(map, dup) == two);
+  REQUIRE(!pn_map_put(map, dup, two));
+  REQUIRE(pn_map_size(map) == 3);
+  REQUIRE(pn_map_get(map, dup) == two);
 
-  assert(pn_refcount(key) == 2);
-  assert(pn_refcount(dup) == 1);
-  assert(pn_refcount(key1) == 2);
-  assert(pn_refcount(key2) == 2);
+  REQUIRE(pn_refcount(key) == 2);
+  REQUIRE(pn_refcount(dup) == 1);
+  REQUIRE(pn_refcount(key1) == 2);
+  REQUIRE(pn_refcount(key2) == 2);
 
-  assert(pn_refcount(one) == 1);
-  assert(pn_refcount(two) == 3);
-  assert(pn_refcount(three) == 2);
+  REQUIRE(pn_refcount(one) == 1);
+  REQUIRE(pn_refcount(two) == 3);
+  REQUIRE(pn_refcount(three) == 2);
 
   pn_map_del(map, key1);
-  assert(pn_map_size(map) == 2);
+  REQUIRE(pn_map_size(map) == 2);
 
-  assert(pn_refcount(key) == 2);
-  assert(pn_refcount(dup) == 1);
-  assert(pn_refcount(key1) == 1);
-  assert(pn_refcount(key2) == 2);
+  REQUIRE(pn_refcount(key) == 2);
+  REQUIRE(pn_refcount(dup) == 1);
+  REQUIRE(pn_refcount(key1) == 1);
+  REQUIRE(pn_refcount(key2) == 2);
 
-  assert(pn_refcount(one) == 1);
-  assert(pn_refcount(two) == 2);
-  assert(pn_refcount(three) == 2);
+  REQUIRE(pn_refcount(one) == 1);
+  REQUIRE(pn_refcount(two) == 2);
+  REQUIRE(pn_refcount(three) == 2);
 
   pn_decref(one);
   pn_decref(two);
@@ -509,7 +528,7 @@ static void test_map(void)
   pn_decref(map);
 }
 
-static void test_hash(void)
+TEST_CASE("hash")
 {
   void *one = pn_class_new(PN_OBJECT, 0);
   void *two = pn_class_new(PN_OBJECT, 0);
@@ -531,19 +550,19 @@ static void test_hash(void)
   pn_hash_put(hash, 12, three);
   pn_hash_put(hash, 18, one);
 
-  assert(pn_hash_get(hash, 2) == two);
-  assert(pn_hash_get(hash, 5) == two);
-  assert(pn_hash_get(hash, 18) == one);
-  assert(pn_hash_get(hash, 0) == NULL);
+  REQUIRE(pn_hash_get(hash, 2) == two);
+  REQUIRE(pn_hash_get(hash, 5) == two);
+  REQUIRE(pn_hash_get(hash, 18) == one);
+  REQUIRE(pn_hash_get(hash, 0) == NULL);
 
-  assert(pn_hash_size(hash) == 14);
+  REQUIRE(pn_hash_size(hash) == 14);
 
   pn_hash_del(hash, 5);
-  assert(pn_hash_get(hash, 5) == NULL);
-  assert(pn_hash_size(hash) == 13);
+  REQUIRE(pn_hash_get(hash, 5) == NULL);
+  REQUIRE(pn_hash_size(hash) == 13);
   pn_hash_del(hash, 18);
-  assert(pn_hash_get(hash, 18) == NULL);
-  assert(pn_hash_size(hash) == 12);
+  REQUIRE(pn_hash_get(hash, 18) == NULL);
+  REQUIRE(pn_hash_size(hash) == 12);
 
   pn_decref(hash);
 
@@ -570,7 +589,7 @@ static uintptr_t collider_hashcode(void *obj)
 #define collider_finalize NULL
 #define collider_inspect NULL
 
-static void test_map_links(void)
+TEST_CASE("map_links")
 {
   const pn_class_t collider_clazz = PN_CLASS(collider);
   void *keys[3];
@@ -588,7 +607,7 @@ static void test_map_links(void)
     pn_map_del(map, keys[delete_idx]);
     for (int i = 0; i < 3; i++) {
       void *value = (i == delete_idx) ? NULL : keys[i];
-      assert (pn_map_get(map, keys[i]) == value);
+      REQUIRE (pn_map_get(map, keys[i]) == value);
     }
     pn_free(map);
   }
@@ -597,49 +616,36 @@ static void test_map_links(void)
 }
 
 
-static bool equals(const char *a, const char *b)
-{
-  if (a == NULL && b == NULL) {
-    return true;
-  }
-
-  if (a == NULL || b == NULL) {
-    return false;
-  }
-
-  return !strcmp(a, b);
-}
-
 static void test_string(const char *value)
 {
   size_t size = value ? strlen(value) : 0;
 
   pn_string_t *str = pn_string(value);
-  assert(equals(pn_string_get(str), value));
-  assert(pn_string_size(str) == size);
+  REQUIRE_THAT(value, Equals(pn_string_get(str)));
+  REQUIRE(size == pn_string_size(str));
 
   pn_string_t *strn = pn_stringn(value, size);
-  assert(equals(pn_string_get(strn), value));
-  assert(pn_string_size(strn) == size);
+  REQUIRE_THAT(value, Equals(pn_string_get(strn)));
+  REQUIRE(size == pn_string_size(strn));
 
   pn_string_t *strset = pn_string(NULL);
   pn_string_set(strset, value);
-  assert(equals(pn_string_get(strset), value));
-  assert(pn_string_size(strset) == size);
+  REQUIRE_THAT(value, Equals(pn_string_get(strset)));
+  REQUIRE(size == pn_string_size(strset));
 
   pn_string_t *strsetn = pn_string(NULL);
   pn_string_setn(strsetn, value, size);
-  assert(equals(pn_string_get(strsetn), value));
-  assert(pn_string_size(strsetn) == size);
+  REQUIRE_THAT(value, Equals(pn_string_get(strsetn)));
+  REQUIRE(size == pn_string_size(strsetn));
 
-  assert(pn_hashcode(str) == pn_hashcode(strn));
-  assert(pn_hashcode(str) == pn_hashcode(strset));
-  assert(pn_hashcode(str) == pn_hashcode(strsetn));
+  REQUIRE(pn_hashcode(str) == pn_hashcode(strn));
+  REQUIRE(pn_hashcode(str) == pn_hashcode(strset));
+  REQUIRE(pn_hashcode(str) == pn_hashcode(strsetn));
 
-  assert(!pn_compare(str, str));
-  assert(!pn_compare(str, strn));
-  assert(!pn_compare(str, strset));
-  assert(!pn_compare(str, strsetn));
+  REQUIRE(!pn_compare(str, str));
+  REQUIRE(!pn_compare(str, strn));
+  REQUIRE(!pn_compare(str, strset));
+  REQUIRE(!pn_compare(str, strsetn));
 
   pn_free(str);
   pn_free(strn);
@@ -647,50 +653,65 @@ static void test_string(const char *value)
   pn_free(strsetn);
 }
 
-static void test_stringn(const char *value, size_t size)
+TEST_CASE("string_null") { test_string(NULL); }
+TEST_CASE("string_empty") { test_string(""); }
+TEST_CASE("string_simple") { test_string("this is a test"); }
+TEST_CASE("string_long") {
+  test_string(
+    "012345678910111213151617181920212223242526272829303132333435363"
+    "738394041424344454647484950515253545556575859606162636465666768");
+}
+
+TEST_CASE("string embedded null")
 {
+  const char value[] = "this has an embedded \000 in it";
+  size_t size = sizeof(value);
+
   pn_string_t *strn = pn_stringn(value, size);
-  assert(equals(pn_string_get(strn), value));
-  assert(pn_string_size(strn) == size);
+  REQUIRE_THAT(value , Equals(pn_string_get(strn)));
+  REQUIRE(pn_string_size(strn) == size);
 
   pn_string_t *strsetn = pn_string(NULL);
   pn_string_setn(strsetn, value, size);
-  assert(equals(pn_string_get(strsetn), value));
-  assert(pn_string_size(strsetn) == size);
+  REQUIRE_THAT(value, Equals(pn_string_get(strsetn)));
+  REQUIRE(pn_string_size(strsetn) == size);
 
-  assert(pn_hashcode(strn) == pn_hashcode(strsetn));
-  assert(!pn_compare(strn, strsetn));
+  REQUIRE(pn_hashcode(strn) == pn_hashcode(strsetn));
+  REQUIRE(!pn_compare(strn, strsetn));
 
   pn_free(strn);
   pn_free(strsetn);
 }
 
-static void test_string_format(void)
+TEST_CASE("string_format")
 {
   pn_string_t *str = pn_string("");
-  assert(str);
+  REQUIRE(str);
   int err = pn_string_format(str, "%s", "this is a string that should be long "
                              "enough to force growth but just in case we'll "
                              "tack this other really long string on for the "
                              "heck of it");
-  assert(err == 0);
+  REQUIRE(err == 0);
   pn_free(str);
 }
 
-static void test_string_addf(void)
+TEST_CASE("string_addf")
 {
   pn_string_t *str = pn_string("hello ");
-  assert(str);
+  REQUIRE(str);
   int err = pn_string_addf(str, "%s", "this is a string that should be long "
                            "enough to force growth but just in case we'll "
                            "tack this other really long string on for the "
                            "heck of it");
-  assert(err == 0);
+  REQUIRE(err == 0);
   pn_free(str);
 }
 
+// FIXME aconway 2018-11-02: XXX check REQUIRE vs CHECK
+
 static void test_map_iteration(int n)
 {
+  INFO("n=" << n);
   pn_list_t *pairs = pn_list(PN_OBJECT, 2*n);
   for (int i = 0; i < n; i++) {
     void *key = pn_class_new(PN_OBJECT, 0);
@@ -703,7 +724,7 @@ static void test_map_iteration(int n)
 
   pn_map_t *map = pn_map(PN_OBJECT, PN_OBJECT, 0, 0.75);
 
-  assert(pn_map_head(map) == 0);
+  REQUIRE(pn_map_head(map) == 0);
 
   for (int i = 0; i < n; i++) {
     pn_map_put(map, pn_list_get(pairs, 2*i), pn_list_get(pairs, 2*i + 1));
@@ -714,29 +735,32 @@ static void test_map_iteration(int n)
     void *key = pn_map_key(map, entry);
     void *value = pn_map_value(map, entry);
     ssize_t idx = pn_list_index(pairs, key);
-    assert(idx >= 0);
+    REQUIRE(idx >= 0);
 
-    assert(pn_list_get(pairs, idx) == key);
-    assert(pn_list_get(pairs, idx + 1) == value);
+    REQUIRE(pn_list_get(pairs, idx) == key);
+    REQUIRE(pn_list_get(pairs, idx + 1) == value);
 
     pn_list_del(pairs, idx, 2);
   }
 
-  assert(pn_list_size(pairs) == 0);
+  REQUIRE(pn_list_size(pairs) == 0);
 
   pn_decref(map);
   pn_decref(pairs);
 }
 
-void test_inspect(void *o, const char *expected)
-{
-  pn_string_t *dst = pn_string(NULL);
-  pn_inspect(o, dst);
-  assert(pn_strequals(pn_string_get(dst), expected));
-  pn_free(dst);
+TEST_CASE("map_iteration") {
+  for (int i = 0; i < 64; ++i) { test_map_iteration(i); }
 }
 
-void test_list_inspect(void)
+#define test_inspect(o, expected) do {                  \
+    pn_string_t *dst = pn_string(NULL);                 \
+    pn_inspect(o, dst);                                 \
+    REQUIRE_THAT(expected, Equals(pn_string_get(dst))); \
+    pn_free(dst);                                       \
+  } while(0)
+
+TEST_CASE("list_inspect")
 {
   pn_list_t *l = build_list(0, END);
   test_inspect(l, "[]");
@@ -762,7 +786,7 @@ void test_list_inspect(void)
   pn_free(l);
 }
 
-void test_map_inspect(void)
+TEST_CASE("map_inspect")
 {
   // note that when there is more than one entry in a map, the order
   // of the entries is dependent on the hashes involved, it will be
@@ -793,7 +817,7 @@ void test_map_inspect(void)
   pn_free(m);
 }
 
-void test_map_coalesced_chain(void)
+TEST_CASE("map_coalesced_chain")
 {
   pn_hash_t *map = pn_hash(PN_OBJECT, 16, 0.75);
   pn_string_t *values[9] = {
@@ -820,12 +844,12 @@ void test_map_coalesced_chain(void)
   //use an addressable element for a key that doesn't map to it:
   pn_hash_put(map, 4, values[6]);
   pn_hash_put(map, 17, values[7]);
-  assert(pn_hash_size(map) == 8);
+  REQUIRE(pn_hash_size(map) == 8);
 
   //free up one non-addressable entry:
   pn_hash_del(map, 16);
-  assert(pn_hash_get(map, 16) == NULL);
-  assert(pn_hash_size(map) == 7);
+  REQUIRE(pn_hash_get(map, 16) == NULL);
+  REQUIRE(pn_hash_size(map) == 7);
 
   //add a key whose addressable slot is already taken (by 17),
   //generating a coalesced chain:
@@ -833,23 +857,23 @@ void test_map_coalesced_chain(void)
 
   //remove an entry from the coalesced chain:
   pn_hash_del(map, 4);
-  assert(pn_hash_get(map, 4) == NULL);
+  REQUIRE(pn_hash_get(map, 4) == NULL);
 
   //test lookup of all entries:
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 1)), "a"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 2)), "b"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 3)), "c"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 14)), "d"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 15)), "e"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 17)), "h"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 12)), "i"));
-  assert(pn_hash_size(map) == 7);
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 1)), Equals("a"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 2)), Equals("b"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 3)), Equals("c"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 14)), Equals("d"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 15)), Equals("e"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 17)), Equals("h"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 12)), Equals("i"));
+  REQUIRE(pn_hash_size(map) == 7);
 
   //cleanup:
   for (pn_handle_t i = pn_hash_head(map); i; i = pn_hash_head(map)) {
     pn_hash_del(map, pn_hash_key(map, i));
   }
-  assert(pn_hash_size(map) == 0);
+  REQUIRE(pn_hash_size(map) == 0);
 
   for (size_t i = 0; i < 9; ++i) {
       pn_free(values[i]);
@@ -857,7 +881,7 @@ void test_map_coalesced_chain(void)
   pn_free(map);
 }
 
-void test_map_coalesced_chain2(void)
+TEST_CASE("map_coalesced_chain2")
 {
   pn_hash_t *map = pn_hash(PN_OBJECT, 16, 0.75);
   pn_string_t *values[10] = {
@@ -886,15 +910,15 @@ void test_map_coalesced_chain2(void)
 
   //free up one non-addressable entry:
   pn_hash_del(map, 14);
-  assert(pn_hash_get(map, 14) == NULL);
+  REQUIRE(pn_hash_get(map, 14) == NULL);
 
   //add a key whose addressable slot is already taken (by 29),
   //generating a coalesced chain:
   pn_hash_put(map, 12, values[7]);//h
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 12)), "h"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 12)), Equals("h"));
   //delete from tail of coalesced chain:
   pn_hash_del(map, 12);
-  assert(pn_hash_get(map, 12) == NULL);
+  REQUIRE(pn_hash_get(map, 12) == NULL);
 
   //extend chain into cellar again, then coalesce again extending back
   //into addressable region
@@ -902,26 +926,26 @@ void test_map_coalesced_chain2(void)
   pn_hash_put(map, 25, values[9]);//j
   //delete entry from coalesced chain, where next element in chain is
   //in cellar:
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 29)), "g"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 29)), Equals("g"));
   pn_hash_del(map, 29);
 
   //test lookup of all entries:
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 1)), "a"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 2)), "b"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 3)), "c"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 1)), Equals("a"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 2)), Equals("b"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 3)), Equals("c"));
   //d was deleted
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 15)), "e"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 16)), "f"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 15)), Equals("e"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 16)), Equals("f"));
   //g was deleted, h was deleted
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 42)), "i"));
-  assert(pn_strequals(pn_string_get((pn_string_t *) pn_hash_get(map, 25)), "j"));
-  assert(pn_hash_size(map) == 7);
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 42)), Equals("i"));
+  REQUIRE_THAT(pn_string_get((pn_string_t *) pn_hash_get(map, 25)), Equals("j"));
+  REQUIRE(pn_hash_size(map) == 7);
 
   //cleanup:
   for (pn_handle_t i = pn_hash_head(map); i; i = pn_hash_head(map)) {
     pn_hash_del(map, pn_hash_key(map, i));
   }
-  assert(pn_hash_size(map) == 0);
+  REQUIRE(pn_hash_size(map) == 0);
 
   for (size_t i = 0; i < 10; ++i) {
       pn_free(values[i]);
@@ -929,31 +953,31 @@ void test_map_coalesced_chain2(void)
   pn_free(map);
 }
 
-void test_list_compare(void)
+TEST_CASE("list_compare")
 {
   pn_list_t *a = pn_list(PN_OBJECT, 0);
   pn_list_t *b = pn_list(PN_OBJECT, 0);
 
-  assert(pn_equals(a, b));
+  REQUIRE(pn_equals(a, b));
 
   void *one = pn_class_new(PN_OBJECT, 0);
   void *two = pn_class_new(PN_OBJECT, 0);
   void *three = pn_class_new(PN_OBJECT, 0);
 
   pn_list_add(a, one);
-  assert(!pn_equals(a, b));
+  REQUIRE(!pn_equals(a, b));
   pn_list_add(b, one);
-  assert(pn_equals(a, b));
+  REQUIRE(pn_equals(a, b));
 
   pn_list_add(b, two);
-  assert(!pn_equals(a, b));
+  REQUIRE(!pn_equals(a, b));
   pn_list_add(a, two);
-  assert(pn_equals(a, b));
+  REQUIRE(pn_equals(a, b));
 
   pn_list_add(a, three);
-  assert(!pn_equals(a, b));
+  REQUIRE(!pn_equals(a, b));
   pn_list_add(b, three);
-  assert(pn_equals(a, b));
+  REQUIRE(pn_equals(a, b));
 
   pn_free(a); pn_free(b);
   pn_free(one); pn_free(two); pn_free(three);
@@ -973,7 +997,7 @@ static void *pn_it_next(void *state) {
   }
 }
 
-void test_iterator(void)
+TEST_CASE("iterator")
 {
   pn_list_t *list = build_list(0,
                                pn_string("one"),
@@ -990,10 +1014,10 @@ void test_iterator(void)
   void *obj;
   int index = 0;
   while ((obj = pn_iterator_next(it))) {
-    assert(obj == pn_list_get(list, index));
+    REQUIRE(obj == pn_list_get(list, index));
     ++index;
   }
-  assert(index == 4);
+  REQUIRE(index == 4);
 
   pn_free(list);
   pn_free(it);
@@ -1026,90 +1050,25 @@ void test_heap(int seed, int size)
   }
 
   intptr_t prev = (intptr_t) pn_list_minpop(list);
-  assert(prev == min);
-  assert(pn_list_size(list) == (size_t)(size - 1));
+  REQUIRE(prev == min);
+  REQUIRE(pn_list_size(list) == (size_t)(size - 1));
   int count = 0;
   while (pn_list_size(list)) {
     intptr_t r = (intptr_t) pn_list_minpop(list);
-    assert(r >= prev);
+    REQUIRE(r >= prev);
     prev = r;
     count++;
   }
-  assert(count == size - 1);
-  assert(prev == max);
+  REQUIRE(count == size - 1);
+  REQUIRE(prev == max);
 
   pn_free(list);
 }
 
-int main(int argc, char **argv)
-{
-  for (size_t i = 0; i < 128; i++) {
-    test_class(PN_OBJECT, i);
-    test_class(PN_VOID, i);
-    test_class(&noop_class, i);
-  }
-
-  for (size_t i = 0; i < 128; i++) {
-    test_new(i, PN_OBJECT);
-    test_new(i, &noop_class);
-  }
-
-  test_finalize();
-  test_free();
-  test_hashcode();
-  test_compare();
-
-  for (int i = 0; i < 1024; i++) {
-    test_refcounting(i);
-  }
-
-  for (size_t i = 0; i < 4; i++) {
-    test_list(i);
-  }
-
-  for (size_t i = 0; i < 4; i++) {
-    test_list_refcount(i);
-  }
-
-  test_list_index();
-
-  test_map();
-  test_map_links();
-
-  test_hash();
-
-  test_string(NULL);
-  test_string("");
-  test_string("this is a test");
-  test_string("012345678910111213151617181920212223242526272829303132333435363"
-              "738394041424344454647484950515253545556575859606162636465666768");
-  test_string("this has an embedded \000 in it");
-  test_stringn("this has an embedded \000 in it", 28);
-
-  test_string_format();
-  test_string_addf();
-
-  test_build_list();
-  test_build_map();
-  test_build_map_odd();
-
-  for (int i = 0; i < 64; i++)
-  {
-    test_map_iteration(i);
-  }
-
-  test_list_inspect();
-  test_map_inspect();
-  test_list_compare();
-  test_iterator();
+TEST_CASE("test_heap") {
   for (int seed = 0; seed < 64; seed++) {
     for (int size = 1; size <= 64; size++) {
       test_heap(seed, size);
     }
   }
-
-  test_map_coalesced_chain();
-  test_map_coalesced_chain2();
-
-  return 0;
 }
