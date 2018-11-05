@@ -198,4 +198,10 @@ bool connection::reconnected() const {
     return (rc && rc->reconnected_);
 }
 
+bool connection::reconnect_pending() const {
+    connection_context& cc = connection_context::get(pn_object());
+    reconnect_context* rc = cc.reconnect_context_.get();
+    return (rc && rc->reconnecting_);
+}
+
 } // namespace proton

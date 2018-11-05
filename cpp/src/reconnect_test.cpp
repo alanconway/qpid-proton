@@ -131,7 +131,7 @@ class server_connection_handler : public proton::messaging_handler {
 class tester : public proton::messaging_handler, public waiter {
   public:
     tester() : waiter(3), container_(*this, "reconnect_client"),
-               start_count(0), open_count(0), reconnecting_count(0),
+               start_count(0), open_count(0),
                link_open_count(0), transport_error_count(0), transport_close_count(0) {}
 
     void on_container_start(proton::container &c) PN_CPP_OVERRIDE {
@@ -162,10 +162,6 @@ class tester : public proton::messaging_handler, public waiter {
         open_count++;
     }
 
-    void on_connection_reconnecting(proton::connection& c) PN_CPP_OVERRIDE {
-        reconnecting_count++;
-    }
-
     void on_sender_open(proton::sender &s) PN_CPP_OVERRIDE {
         ASSERT(bool(link_open_count) == s.connection().reconnected());
         link_open_count++;
@@ -191,11 +187,9 @@ class tester : public proton::messaging_handler, public waiter {
         container_.run();
         ASSERT_EQUAL(1, start_count);
         ASSERT_EQUAL(3, open_count);
-        ASSERT(2 < reconnecting_count);
+        ASSERT(2 < transport_error_count);
         // Last reconnect fails before opening links
         ASSERT(link_open_count > 1);
-        // All transport errors should have been hidden
-        ASSERT_EQUAL(0, transport_error_count);
         // One final transport close, not an error
         ASSERT_EQUAL(1, transport_close_count);
     }
@@ -205,7 +199,7 @@ class tester : public proton::messaging_handler, public waiter {
     proton::internal::pn_unique_ptr<server_connection_handler> s2;
     proton::internal::pn_unique_ptr<server_connection_handler> s3;
     proton::container container_;
-    int start_count, open_count, reconnecting_count, link_open_count, transport_error_count, transport_close_count;
+    int start_count, open_count, link_open_count, transport_error_count, transport_close_count;
 };
 
 int test_failover_simple() {
@@ -219,7 +213,7 @@ int test_failover_simple() {
 class stop_reconnect_tester : public proton::messaging_handler {
   public:
     stop_reconnect_tester() :
-        container_(*this, "reconnect_tester")
+        container_(*this, "reconnect_tester"), errored_(false)
     {
     }
 
@@ -230,15 +224,23 @@ class stop_reconnect_tester : public proton::messaging_handler {
     void on_container_start(proton::container &c) PN_CPP_OVERRIDE {
         proton::reconnect_options reconnect_options;
         c.connect("this-is-not-going-to work.com", proton::connection_options().reconnect(reconnect_options));
-        c.schedule(proton::duration::SECOND, proton::make_work(&stop_reconnect_tester::deferred_stop, this));
+    }
+
+    void on_transport_error(proton::transport& t) PN_CPP_OVERRIDE {
+        errored_ = true;
+        t.connection().container().schedule(
+            proton::duration::IMMEDIATE,
+            proton::make_work(&stop_reconnect_tester::deferred_stop, this));
     }
 
     void run() {
         container_.run();
+        ASSERT(errored_);
     }
 
   private:
     proton::container container_;
+    bool errored_;
 };
 
 int test_stop_reconnect() {
@@ -259,11 +261,13 @@ class authfail_reconnect_tester : public proton::messaging_handler, public waite
     void on_container_start(proton::container& c) PN_CPP_OVERRIDE {
         // This server won't fail in this test
         s1.reset(new server_connection_handler(c, 100, *this));
-        c.schedule(proton::duration::SECOND, proton::make_work(&authfail_reconnect_tester::deferred_stop, this));
     }
 
     void on_transport_error(proton::transport& t) PN_CPP_OVERRIDE {
         errored_ = true;
+        t.connection().container().schedule(
+            proton::duration::IMMEDIATE,
+            proton::make_work(&authfail_reconnect_tester::deferred_stop, this));
     }
 
     void ready() PN_CPP_OVERRIDE {
@@ -284,11 +288,11 @@ class authfail_reconnect_tester : public proton::messaging_handler, public waite
     bool errored_;
 };
 
-// Verify we can stop reconnecting by calling close() in on_connection_reconnecting()
+// Verify we can stop reconnecting by calling close() in on_transport_error()
 class test_reconnecting_close : public proton::messaging_handler, public waiter {
   public:
     test_reconnecting_close() : waiter(1), container_(*this, "test_reconnecting_close"),
-                                reconnecting_called(false) {}
+                                errored_(false) {}
 
     void on_container_start(proton::container &c) PN_CPP_OVERRIDE {
         s1.reset(new server_connection_handler(c, 0, *this));
@@ -298,17 +302,13 @@ class test_reconnecting_close : public proton::messaging_handler, public waiter 
         container_.connect(s1->url(), proton::connection_options().reconnect(proton::reconnect_options()));
     }
 
-    void on_connection_reconnecting(proton::connection& c) PN_CPP_OVERRIDE {
-        reconnecting_called = true;
-        c.close();                        // Abort reconnection
-    }
-
     void on_connection_close(proton::connection& c) PN_CPP_OVERRIDE {
         ASSERT(0);              // Not expecting any clean close
     }
 
     void on_transport_error(proton::transport& t) PN_CPP_OVERRIDE {
-        // Expected, don't throw
+        errored_ = true;
+        t.connection().close(); // Abort reconnection
     }
 
     void run() {
@@ -317,8 +317,7 @@ class test_reconnecting_close : public proton::messaging_handler, public waiter 
 
   private:
     proton::container container_;
-    std::string err_;
-    bool reconnecting_called;
+    bool errored_;
     proton::internal::pn_unique_ptr<server_connection_handler> s1;
 };
 

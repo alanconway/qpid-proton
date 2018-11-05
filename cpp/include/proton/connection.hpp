@@ -181,6 +181,12 @@ PN_CPP_CLASS_EXTERN connection : public internal::object<pn_connection_t>, publi
     /// @see reconnect_options, messaging_handler
     PN_CPP_EXTERN bool reconnected() const;
 
+    /// **Unsettled API** - true if this connection has been disconnected
+    /// and an automatic re-connection is scheduled.
+    ///
+    /// @see reconnect_options, messaging_handler
+    PN_CPP_EXTERN bool reconnect_pending() const;
+
     /// @cond INTERNAL
   friend class internal::factory<connection>;
   friend class container;

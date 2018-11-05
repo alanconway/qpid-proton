@@ -58,31 +58,30 @@ namespace proton {
 /// should respond with connection::open() or reject the request with
 /// connection::close()
 ///
-/// on_connection_reconnecting() may be called if automatic re-connect
-/// is enabled (see reconnect_options).  It is called when the
-/// connection is disconnected and a re-connect will be
-/// attempted. Calling connection::close() will cancel the re-connect.
+/// on_transport_error() is called when the connection is disconnected
+/// unexpectedly. If an automatic reconnect has been scheduled (see
+/// reconnect_options) then connection::reconnect_pending() will be
+/// true.
 ///
-/// on_connection_open() will be called again on a successful
-/// re-connect.  Each open @ref session, @ref sender and @ref receiver
-/// will also be automatically re-opened. On success, on_sender_open()
-/// or on_receiver_open() are called, on failure on_sender_error() or
-/// on_receiver_error().
+/// @note on_connection_open() will be called again after a successful
+/// automatic re-connect.  Each open @ref session, @ref sender and
+/// @ref receiver will also be automatically re-opened. On success,
+/// on_sender_open() or on_receiver_open() are called, on failure
+/// on_sender_error() or on_receiver_error().
 ///
-/// on_connection_close() indicates orderly shut-down of the
+/// on_connection_error() means the remote peer has indicated an error,
+/// it is always followed by on_connection_close()
+///
+/// on_connection_close() means the remote peer has closed the
 /// connection. Servers should respond with connection::close().
-/// on_connection_close() is not called if the connection fails before
-/// the remote end can do an orderly close.
+/// on_connection_close() is not called if the transport fails before
+/// receiving a remote close.
 ///
-/// on_transport_close() is always the final event for a connection, and
-/// is always called regardless of how the connection closed or failed.
+/// on_transport_close() is always the final event for a connection,
+/// and is always called regardless of how the connection closed or
+/// whether there are errors.
 ///
-/// If the connection or transport closes with an error, on_connection_error()
-/// or on_transport_error() is called immediately before on_connection_close() or
-/// on_transport_close(). You can also check for error conditions in the close
-/// function with connection::error() or transport::error()
-///
-/// Note: closing a connection with the special error condition
+/// @note Closing a connection with the special error condition
 /// `amqp:connection-forced`is treated as a disconnect - it triggers
 /// automatic re-connect or on_transport_error()/on_transport_close(),
 /// not on_connection_close().
@@ -122,6 +121,11 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     PN_CPP_EXTERN virtual void on_transport_close(transport&);
 
     /// The underlying network transport has disconnected unexpectedly.
+    ///
+    /// If an automatic re-connect has been scheduled then
+    /// connection::reconnect_pending() will be true.
+    /// Calling connection::close() from on_transport_error()
+    /// will cancel any pending reconnect.
     PN_CPP_EXTERN virtual void on_transport_error(transport&);
 
     /// **Unsettled API** - Called before the connection is opened.
@@ -132,12 +136,6 @@ PN_CPP_CLASS_EXTERN messaging_handler {
     /// Called for the initial open, and also after each successful re-connect if
     /// @ref reconnect_options are set.
     PN_CPP_EXTERN virtual void on_connection_open(connection&);
-
-    /// **Unsettled API** - The connection has been disconnected and
-    /// is about to attempt an automatic re-connect.
-    /// If on_connection_reconnecting() calls connection::close() then
-    /// the reconnect attempt will be canceled.
-    PN_CPP_EXTERN virtual void on_connection_reconnecting(connection&);
 
     /// The remote peer closed the connection.
     PN_CPP_EXTERN virtual void on_connection_close(connection&);

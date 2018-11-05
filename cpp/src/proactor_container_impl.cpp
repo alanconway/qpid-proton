@@ -294,6 +294,7 @@ void container::impl::reset_reconnect(pn_connection_t* pnc) {
     rc->delay_ = 0;
     rc->retries_ = 0;
     rc->current_url_ = -1;
+    rc->reconnecting_ = false;
 }
 
 bool container::impl::can_reconnect(pn_connection_t* pnc) {
@@ -301,14 +302,6 @@ bool container::impl::can_reconnect(pn_connection_t* pnc) {
     // not expect a connection it closed to re-open.
     if (pn_connection_state(pnc) & PN_LOCAL_CLOSED) return false;
 
-    // If container stopping don't try to reconnect
-    // - we pretend to have set up a reconnect attempt so
-    //   that the proactor disconnect will finish and we will exit
-    //   the run loop without error.
-    {
-        GUARD(lock_);
-        if (stopping_) return true;
-    }
     connection_context& cc = connection_context::get(pnc);
     reconnect_context* rc = cc.reconnect_context_.get();
 
@@ -664,20 +657,31 @@ container::impl::dispatch_result container::impl::dispatch(pn_event_t* event) {
         break;
     }
     case PN_TRANSPORT_CLOSED: {
-        // If reconnect is turned on then handle closed on error here with reconnect attempt
-        pn_connection_t* c = pn_event_connection(event);
-        pn_transport_t* t = pn_event_transport(event);
-        if (pn_condition_is_set(pn_transport_condition(t)) && can_reconnect(c)) {
+        pn_connection_t* pnc = pn_event_connection(event);
+        if (!pnc) break;
+        pn_transport_t* pnt = pn_event_transport(event);
+        transport t = make_wrapper(pnt);
+        if (pn_condition_is_set(pn_transport_condition(pnt))) { // Transport error
+            // Hide transport errors when container is stopping,
+            // so we can exit the run loop without error.
+            {
+                GUARD(lock_);
+                if (stopping_) return ContinueLoop;
+            }
+            reconnect_context* rc = connection_context::get(c).reconnect_context_.get();
+            if (rc) rc->reconnecting_ = can_reconnect(c);
             messaging_handler *mh = get_handler(event);
-            if (mh) {           // Notify handler of pending reconnect
-                connection conn = make_wrapper(c);
-                mh->on_connection_reconnecting(conn);
+            if (mh) {
+                mh->on_transport_error(t);
+                // Re-check conditions in case on_transport_error() closed
+                if (rc) rc->reconnecting_ = can_reconnect(c);
             }
-            // on_connection_reconnecting() may have closed the connection, check again.
-            if (!(pn_connection_state(c) & PN_LOCAL_CLOSED)) {
+            if (rc && rc->reconnecting_) {
                 setup_reconnect(c);
-                return ContinueLoop;
+            } else if (mh) {
+                mh->on_transport_close(t);
             }
+            return ContinueLoop; // Hide the TRANSPORT_CLOSED from adapter
         }
         // Otherwise, this connection will be freed by the proactor.
         // Mark its work_queue finished so it won't try to use the freed connection.
