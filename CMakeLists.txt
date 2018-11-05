@@ -331,9 +331,8 @@ find_program(GO_EXE go)
 mark_as_advanced(GO_EXE)
 if (GO_EXE)
   set (DEFAULT_GO ON)
-  if(WIN32 OR RUNTIME_CHECK)
+  if(WIN32 AND NOT CMAKE_COMPILER_IS_GNUCC)
     # Go on windows requires gcc tool chain
-    # Go does not work with C-based runtime checkers.
     set (DEFAULT_GO OFF)
   endif()
 endif (GO_EXE)
@@ -356,15 +355,13 @@ if(SWIG_FOUND)
 
   # Prerequisites for Python wrapper:
   find_package (PythonLibs ${PYTHON_VERSION_STRING} EXACT)
-  # TODO aconway 2018-09-07: get python binding tests working with sanitizers
-  if (PYTHONLIBS_FOUND AND NOT SANITIZE_FLAGS)
+  if (PYTHONLIBS_FOUND)
     set (DEFAULT_PYTHON ON)
   endif ()
 
   # Prerequisites for Ruby:
   find_package(Ruby)
-  # TODO aconway 2018-09-07: get ruby binding tests working with sanitizers
-  if (RUBY_FOUND AND NOT SANITIZE_FLAGS)
+  if (RUBY_FOUND)
     set (DEFAULT_RUBY ON)
   endif ()
 endif()

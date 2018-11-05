@@ -28,24 +28,10 @@ fi
 LIB=$1; shift
 EXE=$2
 
-case $EXE in
-    *ruby*|*.rb|*python*|*.py)
-        # ruby has spurious leaks and causes asan errors.
-        #
-        # python tests have many leaks that may be real, but need to be
-        # analysed & fixed or suppressed before turning this on
-
-        # Disable link order check to run with limited sanitizing
-        # Still seeing problems.
-        export ASAN_OPTIONS=verify_asan_link_order=0
-        ;;
-    *)
-        # Preload the asan library linked to LIB. Note we need to
-        # check the actual linkage, there may be multiple asan lib
-        # versions installed and we must use the same one.
-        libasan=$(ldd $LIB | awk "/(libasan\\.so[.0-9]*)/ { print \$1 }")
-        export LD_PRELOAD="$libasan:$LD_PRELOAD"
-        ;;
-esac
+# Preload the asan library linked to LIB. Note we need to
+# check the actual linkage, there may be multiple asan lib
+# versions installed and we must use the same one.
+libasan=$(ldd $LIB | awk "/(libasan\\.so[.0-9]*)/ { print \$1 }")
+export LD_PRELOAD="$libasan:$LD_PRELOAD"
 
 exec "$@"

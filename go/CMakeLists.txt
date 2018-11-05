@@ -56,7 +56,7 @@ set(GO_ENV ${PN_ENV_SCRIPT} --
   "SASLPASSWD=${CyrusSASL_Saslpasswd_EXECUTABLE}"
   CACHE INTERNAL "Run a command with Go environment variables")
 
-set(GO ${GO_ENV} ${GO_EXE} CACHE INTERNAL "Run go with environment set")
+set(GO ${GO_ENV} ${TEST_WRAP_PREFIX_CMD} ${GO_EXE} CACHE INTERNAL "Run go with environment set")
 
 set(GO_BUILD ${GO} build ${GO_BUILD_FLAGS} ${GO_RPATH_FLAGS} CACHE INTERNAL "Run go build")
 set(GO_INSTALL ${GO} install ${GO_BUILD_FLAGS} CACHE INTERNAL "Run go install" )
